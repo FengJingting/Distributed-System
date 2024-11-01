@@ -2,7 +2,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"math/rand"
 	"net"
 	"strings"
 	"time"
@@ -40,10 +39,6 @@ func listenAndReply(port string) {
 		// Handle different message types
 		if len(messageParts) == 1 && messageParts[0] == "ping" {
 			// Set packet loss rate
-			if rand.Float64() < loserate {
-				fmt.Printf("Simulating packet loss for %s\n", remoteAddr.String())
-				continue // Packet loss, do not send ack
-			}
 			// If the array length is 1 and the first element is "ping", return "ack"
 			_, err = conn.WriteToUDP([]byte("ack"), remoteAddr)
 			if err != nil {

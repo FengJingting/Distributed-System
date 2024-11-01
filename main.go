@@ -8,6 +8,7 @@ import (
 )
 
 func main() {
+	initConfig()
 	// Start background processes
 	go listenAndReply("8080")
 	go detect_failure_n(5)

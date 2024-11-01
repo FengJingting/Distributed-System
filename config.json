@@ -1,0 +1,9 @@
+{
+    "domain": "fa24-cs425-2901.cs.illinois.edu",
+    "memberlist": {
+        "alive": [
+            ["fa24-cs425-2901.cs.illinois.edu", "8080", "v0", "-1"]
+        ],
+        "failed": []
+    }
+}
