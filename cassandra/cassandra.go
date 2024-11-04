@@ -8,7 +8,7 @@ import (
 	// "net"
 	"log"
 	"time"
-	"mp3/utils"
+	// "mp3/utils"
 	"sort"
 	"math/rand"
 	"encoding/json"
@@ -76,23 +76,52 @@ func (ring *ConsistentHashRing) updatePredecessorsAndSuccessors() {
     }
 }
 
-// AddRing 将新节点添加到一致性哈希环中
+// // AddRing 将新节点添加到一致性哈希环中
+// func (ring *ConsistentHashRing) AddRing(node *Node) {
+//     ring.Mutex.Lock()
+//     defer ring.Mutex.Unlock()
+
+//     // 使用节点的 IP 和端口生成唯一的哈希值作为节点位置
+//     nodeKey := fmt.Sprintf("%s:%s", node.IP, node.Port)
+//     nodeHash := utils.Hash(nodeKey)
+
+//     // 将哈希值和节点指针添加到 Nodes 中
+//     ring.Nodes[nodeHash] = node
+
+//     // 将哈希值插入到 SortedHashes 中并保持排序
+//     ring.SortedHashes = append(ring.SortedHashes, nodeHash)
+//     sort.Slice(ring.SortedHashes, func(i, j int) bool { return ring.SortedHashes[i] < ring.SortedHashes[j] })
+
+//     // 更新前驱和后继
+//     ring.updatePredecessorsAndSuccessors()
+// 	// 打印哈希环中的节点及其前驱和后继
+// 	fmt.Println("Current nodes in the ring:")
+// 	for _, hash := range Ring.SortedHashes {
+// 		node := Ring.Nodes[hash]
+// 		fmt.Printf("Node ID=%d, IP=%s, Port=%s\n", node.ID, node.IP, node.Port)
+// 		if node.Predecessor != nil {
+// 			fmt.Printf("  Predecessor: ID=%d\n", node.Predecessor.ID)
+// 		}
+// 		if node.Successor != nil {
+// 			fmt.Printf("  Successor: ID=%d\n", node.Successor.ID)
+// 		}
+// 	}
+// 	// broadcastRingUpdate()
+// } 
+
 func (ring *ConsistentHashRing) AddRing(node *Node) {
     ring.Mutex.Lock()
     defer ring.Mutex.Unlock()
 
-    // 使用节点的 IP 和端口生成唯一的哈希值作为节点位置
-    nodeKey := fmt.Sprintf("%s:%s", node.IP, node.Port)
-    nodeHash := utils.Hash(nodeKey)
+    // 使用 IP 和端口生成的哈希值（Node ID）作为 key
+    nodeID := node.ID  // 假设 Node ID 已经通过 IP 和端口的哈希生成
+    ring.Nodes[nodeID] = node
 
-    // 将哈希值和节点指针添加到 Nodes 中
-    ring.Nodes[nodeHash] = node
-
-    // 将哈希值插入到 SortedHashes 中并保持排序
-    ring.SortedHashes = append(ring.SortedHashes, nodeHash)
+    // 更新 SortedHashes 列表并保持排序
+    ring.SortedHashes = append(ring.SortedHashes, nodeID)
     sort.Slice(ring.SortedHashes, func(i, j int) bool { return ring.SortedHashes[i] < ring.SortedHashes[j] })
 
-    // 更新前驱和后继
+    // 更新前驱和后继关系（确保环结构的完整性）
     ring.updatePredecessorsAndSuccessors()
 	// 打印哈希环中的节点及其前驱和后继
 	fmt.Println("Current nodes in the ring:")
@@ -106,8 +135,7 @@ func (ring *ConsistentHashRing) AddRing(node *Node) {
 			fmt.Printf("  Successor: ID=%d\n", node.Successor.ID)
 		}
 	}
-	// broadcastRingUpdate()
-} 
+}
 // ---------------------------Basic file operations---------------------
 // Create
 // func create(localFilename, hyDFSFilename string) error {

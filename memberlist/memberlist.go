@@ -25,43 +25,87 @@ func findNodeDetailsByIP(ip string) (string, string, string, bool) {
 
 func List_mem_ids() {
     fmt.Println("list_mem_ids")
-    // TODO: augment list_mem from MP2 to also print the ID on the ring which each node in the membership list maps to.
-    // You may want to sort this by ID (useful for tests).
-}
 
-func List_mem() {
-    // Iterate through and print each key-value pair in the memberlist
-    for status, nodes := range cassandra.Memberlist {
-        fmt.Printf("%s nodes:\n", status)
-        if len(nodes) == 0 {
-            fmt.Println("No nodes")
-        } else {
-            for _, node := range nodes {
-                fmt.Printf("  ID: %d, IP: %s, Port: %s, Timestamp: %d\n", node.ID, node.IP, node.Port, node.Timestamp)
+    // 加锁以确保线程安全
+    cassandra.Ring.Mutex.Lock()
+    defer cassandra.Ring.Mutex.Unlock()
+
+    // 遍历 SortedHashes 获取排序好的节点
+    for _, nodeHash := range cassandra.Ring.SortedHashes {
+        node := cassandra.Ring.Nodes[nodeHash]
+
+        // 找到节点的状态
+        var nodeStatus string
+        for status, nodes := range cassandra.Memberlist {
+            found := false
+            for _, n := range nodes {
+                if n.ID == node.ID {
+                    nodeStatus = status
+                    found = true
+                    break
+                }
+            }
+            if found {
+                break
             }
         }
+
+        // 打印节点的状态、ID、IP 和端口
+        fmt.Printf("Status: %s, Node ID: %d, IP: %s, Port: %s\n", 
+                    nodeStatus, nodeHash, node.IP, node.Port)
     }
 }
 
 func List_self() {
     fmt.Println("list_self function called")
 
+    // 加锁以确保安全访问
+    cassandra.Ring.Mutex.Lock()
+    defer cassandra.Ring.Mutex.Unlock()
+
     found := false
     for state, nodes := range cassandra.Memberlist {
         for _, node := range nodes {
+            // 检查当前节点是否匹配本节点的 IP 地址
             if node.IP == cassandra.Domain {
-                // 输出节点信息
-                fmt.Printf("Found matching node in state '%s': ID: %d, IP: %s, Port: %s, Timestamp: %d\n", state, node.ID, node.IP, node.Port, node.Timestamp)
+                fmt.Printf("Found matching node in state '%s':\n", state)
+                fmt.Printf("  Node ID: %d\n  IP: %s\n  Port: %s\n  Timestamp: %d\n", 
+                           node.ID, node.IP, node.Port, node.Timestamp)
+
+                // 获取前驱节点和后继节点信息
+                ringNode := cassandra.Ring.Nodes[node.ID]
+                if ringNode != nil {
+                    if ringNode.Predecessor != nil {
+                        fmt.Printf("  Predecessor: ID=%d, IP=%s, Port=%s\n", 
+                                   ringNode.Predecessor.ID, ringNode.Predecessor.IP, ringNode.Predecessor.Port)
+                    } else {
+                        fmt.Println("  Predecessor: None")
+                    }
+
+                    if ringNode.Successor != nil {
+                        fmt.Printf("  Successor: ID=%d, IP=%s, Port=%s\n", 
+                                   ringNode.Successor.ID, ringNode.Successor.IP, ringNode.Successor.Port)
+                    } else {
+                        fmt.Println("  Successor: None")
+                    }
+                } else {
+                    fmt.Println("  Node information not found in the ring.")
+                }
+
                 found = true
+                break
             }
+        }
+        if found {
+            break
         }
     }
 
-    // 如果没有找到匹配的节点
     if !found {
         fmt.Println("No matching node found in any state")
     }
 }
+
 
 func Join() {
     fmt.Println("join function called")
@@ -98,7 +142,7 @@ func changeStatus(status, nodeIP, port, timestamp, initial string) {
         cassandra.Memberlist[status] = append(cassandra.Memberlist[status], nodeToMove)
         cassandra.CountMutex.Unlock()
 
-        List_mem() // 调试用，打印当前 memberlist 的状态
+        List_mem_ids() // 调试用，打印当前 memberlist 的状态
         Write_to_log()
     } else {
         fmt.Printf("Node %s with port %s not found in alive\n", nodeIP, port)
