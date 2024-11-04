@@ -1,21 +1,22 @@
-package main
+package memberlist
 
 import (
 	"fmt"
 	"time"
+	"mp3/utils"
 )
 
 func detect_failure(t float64) {
 	// Retrieve the global list of alive nodes
-	aliveNodes := memberlist["alive"]
+	aliveNodes := utils.Memberlist["alive"]
 	// Iterate through each alive node to perform ping
 	for i := 0; i < len(aliveNodes); i++ {
 		node := aliveNodes[i]
-		ip := node[0]   // IP
-		port := node[1] // Port
+		ip := node.IP   // IP
+		port := node.Port // Port
 
 		// skip itself
-		if ip == domain {
+		if ip == utils.Domain {
 			continue
 		}
 
@@ -25,7 +26,7 @@ func detect_failure(t float64) {
 			//process depend on suspiction mode
 			// If ifSus is false, mark the node as failed and broadcast the status
 			fmt.Printf("Marking node %s as failed and broadcasting failure\n", ip)
-			changeStatus("failed", node[0], node[1], node[2], "alive")
+			changeStatus("failed", node.IP, node.Port, fmt.Sprint(node.ID), "alive")
 
 		}
 	}
@@ -35,7 +36,7 @@ func detect_failure_n(t float64) {
 	// Run continuous failure detection
 	for {
 		// Shuffle the order of the alive list
-		Shuffle(memberlist["alive"])
+		utils.Shuffle(utils.Memberlist["alive"])
 
 		// Call the detect_failure function
 		detect_failure(t)
