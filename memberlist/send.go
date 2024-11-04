@@ -23,17 +23,24 @@ func send_status(status string, selfIP string) {
 	}
 }
 
-// update (the whole list)
 func send_update_whole(status string, selfIP string) {
-	// status option: update
-	// form message
-	jsonData, err := json.Marshal(cassandra.Memberlist)
+	// 将 Memberlist 和 Ring 序列化为 JSON
+	memberlistData, err := json.Marshal(cassandra.Memberlist)
 	if err != nil {
 		fmt.Println("Error encoding memberlist JSON:", err)
 		return
 	}
-	message := status + "+" + string(jsonData)
-	// send to all servers except itself
+
+	ringData, err := json.Marshal(cassandra.Ring)
+	if err != nil {
+		fmt.Println("Error encoding ring JSON:", err)
+		return
+	}
+
+	// 构建消息，将 status、Memberlist 和 Ring 合并到一起
+	message := fmt.Sprintf("%s+%s+%s", status, string(memberlistData), string(ringData))
+
+	// 向所有节点发送此消息，除自身外
 	for _, node := range cassandra.Memberlist["alive"] {
 		serverIP := node.IP
 		if serverIP == selfIP {
@@ -122,34 +129,4 @@ func send_update(content string, status string, selfIP string) {
 		port := node.Port
 		send(serverIP, port, message)
 	}
-}
-
-
-// 广播当前环信息到所有节点
-func broadcastRingUpdate() {
-    cassandra.CountMutex.Lock()
-    defer cassandra.CountMutex.Unlock()
-
-    // 序列化 Memberlist 和 Ring
-    memberlistData, err := json.Marshal(cassandra.Memberlist)
-    if err != nil {
-        fmt.Println("Error encoding Memberlist:", err)
-        return
-    }
-
-    ringData, err := json.Marshal(cassandra.Ring)
-    if err != nil {
-        fmt.Println("Error encoding Ring:", err)
-        return
-    }
-
-    // 构建广播消息
-    message := fmt.Sprintf("update+%s+%s", string(memberlistData), string(ringData))
-
-    // 遍历所有节点并发送消息
-    for _, node := range cassandra.Memberlist["alive"] {
-        if node.IP != cassandra.Domain {  // 跳过自身
-            send(node.IP, node.Port, message)
-        }
-    }
 }

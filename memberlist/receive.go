@@ -79,7 +79,7 @@ func ListenAndReply(port string) {
 			// 	continue
 			// }
 			// send_update_whole("update", cassandra.Domain)
-			// cassandra.Write_to_log()
+			
 
 			// 解析消息并调用 addNode 函数添加节点
 			// 调用 addNode 添加节点
@@ -87,21 +87,10 @@ func ListenAndReply(port string) {
 			newPort := "8080"  // 使用接收到的端口信息
 			AddNode(newIP, newPort)
 
-			// 将 memberlist 编码为 JSON 并发送回给请求者
-			cassandra.CountMutex.Lock()
-			memberlistJSON, err := json.Marshal(cassandra.Memberlist)
-			cassandra.CountMutex.Unlock()
-			if err != nil {
-				fmt.Println("Error encoding memberlist JSON:", err)
-				return
-			}
-
-			_, err = conn.WriteToUDP(memberlistJSON, remoteAddr)
-			if err != nil {
-				fmt.Println("Error sending memberlist:", err)
-				return
-			}
-			fmt.Println("Memberlist sent to new node")
+			// 将 memberlist 和 ring 编码为 JSON 并发送回给请求者
+			send_update_whole("update", newIP)
+			// TODO: 写入日志
+			// cassandra.Write_to_log()
 
 		} else if len(messageParts) == 2 && messageParts[0] == "update" {
 			// Node update
@@ -122,6 +111,43 @@ func ListenAndReply(port string) {
 			// 	continue
 			// }
 			// cassandra.Write_to_log()
+			 // 解析 `memberlist` JSON 数据
+			 var newMemberlist map[string][]cassandra.Node
+			 err := json.Unmarshal([]byte(messageParts[1]), &newMemberlist)
+			 if err != nil {
+				 fmt.Println("Error decoding memberlist JSON:", err)
+				 return
+			 }
+		 
+			 // 解析 `ring` JSON 数据
+			 var newRing cassandra.ConsistentHashRing
+			 err = json.Unmarshal([]byte(messageParts[2]), &newRing)
+			 if err != nil {
+				 fmt.Println("Error decoding ring JSON:", err)
+				 return
+			 }
+		 
+			 // 使用锁确保对全局 `memberlist` 和 `ring` 的线程安全更新
+			 cassandra.CountMutex.Lock()
+			 cassandra.Memberlist = newMemberlist
+			 *cassandra.Ring = newRing
+			 cassandra.CountMutex.Unlock()
+		 
+			 // 输出更新后的 `memberlist` 和 `ring`
+			 fmt.Println("Updated Memberlist and Ring:")
+			 List_mem_ids()
+			 fmt.Println("Updated Ring:")
+			 for _, hash := range cassandra.Ring.SortedHashes {
+				 node := cassandra.Ring.Nodes[hash]
+				 fmt.Printf("Node ID=%d, IP=%s, Port=%s\n", node.ID, node.IP, node.Port)
+			 }
+		 
+			 // 发送 `ack` 确认消息
+			 _, err = conn.WriteToUDP([]byte("received"), remoteAddr)
+			 if err != nil {
+				 fmt.Println("Error sending ack:", err)
+				 return
+			 }
 
 		} else {
 			fmt.Println(messageParts)
