@@ -1,12 +1,13 @@
 package memberlist
 
 import (
-	// "encoding/json"
+	"encoding/json"
 	"fmt"
 	"net"
 	"strings"
 	"time"
 	"mp3/utils"
+	"mp3/cassandra"
 )
 
 func ListenAndReply(port string) {
@@ -63,14 +64,13 @@ func ListenAndReply(port string) {
 		} else if len(messageParts) == 2 && messageParts[0] == "join" {
 			fmt.Printf("Node Added\n")
 			// timestamp := time.Now().Format(time.RFC3339)
-			// Create new node [IP, Port, Timestamp]
 			// newNode := []string{messageParts[1], "8080", timestamp}
 
 			// Add new node to memberlist["alive"]
-			// utils.CountMutex.Lock()
+			// cassandra.CountMutex.Lock()
 			// newNode := []string{messageParts[1], "8080", timestamp}
-			// utils.Memberlist["alive"] = append(utils.Memberlist["alive"], newNode)
-			// utils.CountMutex.Unlock()
+			// cassandra.Memberlist["alive"] = append(cassandra.Memberlist["alive"], newNode)
+			// cassandra.CountMutex.Unlock()
 			// list_mem()
 			// Reply
 			// _, err = conn.WriteToUDP([]byte("received"), remoteAddr)
@@ -78,8 +78,30 @@ func ListenAndReply(port string) {
 			// 	fmt.Println("Error sending ack:", err)
 			// 	continue
 			// }
-			// send_update_whole("update", utils.Domain)
-			// utils.Write_to_log()
+			// send_update_whole("update", cassandra.Domain)
+			// cassandra.Write_to_log()
+
+			// 解析消息并调用 addNode 函数添加节点
+			// 调用 addNode 添加节点
+			newIP := messageParts[1]
+			newPort := "8080"  // 使用接收到的端口信息
+			AddNode(newIP, newPort)
+
+			// 将 memberlist 编码为 JSON 并发送回给请求者
+			cassandra.CountMutex.Lock()
+			memberlistJSON, err := json.Marshal(cassandra.Memberlist)
+			cassandra.CountMutex.Unlock()
+			if err != nil {
+				fmt.Println("Error encoding memberlist JSON:", err)
+				return
+			}
+
+			_, err = conn.WriteToUDP(memberlistJSON, remoteAddr)
+			if err != nil {
+				fmt.Println("Error sending memberlist:", err)
+				return
+			}
+			fmt.Println("Memberlist sent to new node")
 
 		} else if len(messageParts) == 2 && messageParts[0] == "update" {
 			// Node update
@@ -90,16 +112,16 @@ func ListenAndReply(port string) {
 			// 	fmt.Println("Error decoding memberlist JSON:", err)
 			// 	return
 			// }
-			// utils.CountMutex.Lock()
+			// cassandra.CountMutex.Lock()
 			// memberlist = newmemberlist
-			// utils.CountMutex.Unlock()
+			// cassandra.CountMutex.Unlock()
 			// list_mem()
 			// _, err = conn.WriteToUDP([]byte("received"), remoteAddr)
 			// if err != nil {
 			// 	fmt.Println("Error sending ack:", err)
 			// 	continue
 			// }
-			// utils.Write_to_log()
+			// cassandra.Write_to_log()
 
 		} else {
 			fmt.Println(messageParts)
@@ -108,21 +130,21 @@ func ListenAndReply(port string) {
 }
 
 // addNode 初始化并添加新节点到 alive 列表中
-func addNode(ip string, port string) {
+func AddNode(ip string, port string) {
 	ID := utils.Hash(ip+port)
-    node := &utils.Node{
+    node := &cassandra.Node{
         ID:        ID,
         IP:        ip,
         Port:      port,
         Timestamp: int(time.Now().Unix()),
     }
     // 将新节点添加到 memberlist 的 alive 列表中
-    utils.CountMutex.Lock()
-    defer utils.CountMutex.Unlock()
+    cassandra.CountMutex.Lock()
+    defer cassandra.CountMutex.Unlock()
 
-    utils.Memberlist["alive"] = append(utils.Memberlist["alive"], *node)
+    cassandra.Memberlist["alive"] = append(cassandra.Memberlist["alive"], *node)
     fmt.Printf("Node added to 'alive': ID=%d, IP=%s, Port=%s, Timestamp=%d\n", node.ID, node.IP, node.Port, node.Timestamp)
     
-	utils.Ring.AddRing(node)
+	cassandra.Ring.AddRing(node)
 
 }

@@ -4,6 +4,7 @@ import (
     "bufio"
     "fmt"
     "os"
+    "strings"
 )
 
 // lsHyDFSfilename 接受文件名，返回所有虚拟机的地址及其ID
@@ -45,12 +46,14 @@ func getfromreplica(){
     parts := strings.Split(input, " ")
     if len(parts) != 3 {
         fmt.Println("输入格式不正确，请确保输入三个参数并用空格分隔。")
-        return "", "", ""
+        return 
     }
 
     VMaddress := parts[0]
     HyDFSfilename := parts[1]
     localfilename := parts[2]
+    fmt.Printf("VM Address: %s, HyDFS Filename: %s, Local Filename: %s\n", VMaddress, HyDFSfilename, localfilename)
+
     // TODO: 调用get函数
     // variant of get file to get the file from a particular replica. 
     // This should simply fetch the file and not perform any further actions on the file. 

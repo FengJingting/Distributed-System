@@ -1,9 +1,8 @@
 package main
 
 import (
-	// "mp3/cassandra"
+	"mp3/cassandra"
 	"mp3/memberlist"
-	"mp3/utils"
 	"bufio"
 	"fmt"
 	"os"
@@ -12,7 +11,12 @@ import (
 
 func main() {
 	// load configs
-	utils.InitConfig()
+	cassandra.InitConfig()
+	// 判断是否为 Introducer 节点
+    if cassandra.Introducer == cassandra.Domain {
+        fmt.Println("This node is the Introducer. Adding itself to the member list.")
+        memberlist.AddNode(cassandra.Domain, cassandra.Port)  // 调用 addNode 函数将自己添加到成员列表
+    }
 	// Start background processes
 	go memberlist.ListenAndReply("8080") //启动8080端口，监听各个vm发来的ping
 	// go detect_failure_n(5)
@@ -32,18 +36,6 @@ func main() {
 			memberlist.List_self()
 		case "join":
 			memberlist.Join()
-			// 打印哈希环中的节点及其前驱和后继
-			fmt.Println("Current nodes in the ring:")
-			for _, hash := range utils.Ring.SortedHashes {
-				node := utils.Ring.Nodes[hash]
-				fmt.Printf("Node ID=%d, IP=%s, Port=%s\n", node.ID, node.IP, node.Port)
-				if node.Predecessor != nil {
-					fmt.Printf("  Predecessor: ID=%d\n", node.Predecessor.ID)
-				}
-				if node.Successor != nil {
-					fmt.Printf("  Successor: ID=%d\n", node.Successor.ID)
-				}
-			}
 		// basic file operation
 		// case "create":
 		// 	create()

@@ -5,14 +5,15 @@ import (
 	"fmt"
 	"net"
 	"time"
-	"mp3/utils"
+	// "mp3/utils"
+	"mp3/cassandra"
 )
 
 func send_status(status string, selfIP string) {
 	// status option: alive/suspect/fail/leave
 	message := status
 	// send to all servers except itself
-	for _, node := range utils.Memberlist["alive"] {
+	for _, node := range cassandra.Memberlist["alive"] {
 		serverIP := node.IP  // 使用 node.IP 而不是 node[0]
 		if serverIP == selfIP {
 			continue
@@ -26,14 +27,14 @@ func send_status(status string, selfIP string) {
 func send_update_whole(status string, selfIP string) {
 	// status option: update
 	// form message
-	jsonData, err := json.Marshal(utils.Memberlist)
+	jsonData, err := json.Marshal(cassandra.Memberlist)
 	if err != nil {
 		fmt.Println("Error encoding memberlist JSON:", err)
 		return
 	}
 	message := status + "+" + string(jsonData)
 	// send to all servers except itself
-	for _, node := range utils.Memberlist["alive"] {
+	for _, node := range cassandra.Memberlist["alive"] {
 		serverIP := node.IP
 		if serverIP == selfIP {
 			continue
@@ -80,36 +81,32 @@ func send_ping(ip, port string, t float64) bool {
 }
 
 func send(ip string, port string, message string) {
-	// Resolve the TCP address
-	serverAddr, err := net.ResolveTCPAddr("tcp", ip+":"+port)
+	serverAddr, err := net.ResolveUDPAddr("udp", ip+":"+port)
 	if err != nil {
 		fmt.Println("Error resolving address:", err)
 		return
 	}
 
-	// Dial a TCP connection
-	conn, err := net.DialTCP("tcp", nil, serverAddr)
+	conn, err := net.DialUDP("udp", nil, serverAddr)
 	if err != nil {
-		fmt.Println("Error dialing TCP:", err)
+		fmt.Println("Error dialing UDP:", err)
 		return
 	}
 	defer conn.Close()
 
-	// Send the message
 	_, err = conn.Write([]byte(message))
 	if err != nil {
 		fmt.Println("Error sending message:", err)
 		return
 	}
 
-	// Buffer to receive the response
 	buffer := make([]byte, 1024)
-	n, err := conn.Read(buffer)
+	n, remoteAddr, err := conn.ReadFromUDP(buffer)
 	if err != nil {
 		fmt.Println("Error receiving response:", err)
 		return
 	}
-	fmt.Printf("Received from server: %s\n", string(buffer[:n]))
+	fmt.Printf("Received from %s: %s\n", remoteAddr, string(buffer[:n]))
 }
 
 
@@ -117,7 +114,7 @@ func send(ip string, port string, message string) {
 func send_update(content string, status string, selfIP string) {
 	// status option: alive/suspect/failed/leave
 	message := status + "+" + content
-	for _, node := range utils.Memberlist["alive"] {
+	for _, node := range cassandra.Memberlist["alive"] {
 		serverIP := node.IP
 		if serverIP == selfIP {
 			continue
@@ -125,4 +122,34 @@ func send_update(content string, status string, selfIP string) {
 		port := node.Port
 		send(serverIP, port, message)
 	}
+}
+
+
+// 广播当前环信息到所有节点
+func broadcastRingUpdate() {
+    cassandra.CountMutex.Lock()
+    defer cassandra.CountMutex.Unlock()
+
+    // 序列化 Memberlist 和 Ring
+    memberlistData, err := json.Marshal(cassandra.Memberlist)
+    if err != nil {
+        fmt.Println("Error encoding Memberlist:", err)
+        return
+    }
+
+    ringData, err := json.Marshal(cassandra.Ring)
+    if err != nil {
+        fmt.Println("Error encoding Ring:", err)
+        return
+    }
+
+    // 构建广播消息
+    message := fmt.Sprintf("update+%s+%s", string(memberlistData), string(ringData))
+
+    // 遍历所有节点并发送消息
+    for _, node := range cassandra.Memberlist["alive"] {
+        if node.IP != cassandra.Domain {  // 跳过自身
+            send(node.IP, node.Port, message)
+        }
+    }
 }

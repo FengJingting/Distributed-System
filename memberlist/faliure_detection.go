@@ -3,12 +3,13 @@ package memberlist
 import (
 	"fmt"
 	"time"
-	"mp3/utils"
+	// "mp3/utils"
+	"mp3/cassandra"
 )
 
 func detect_failure(t float64) {
 	// Retrieve the global list of alive nodes
-	aliveNodes := utils.Memberlist["alive"]
+	aliveNodes := cassandra.Memberlist["alive"]
 	// Iterate through each alive node to perform ping
 	for i := 0; i < len(aliveNodes); i++ {
 		node := aliveNodes[i]
@@ -16,7 +17,7 @@ func detect_failure(t float64) {
 		port := node.Port // Port
 
 		// skip itself
-		if ip == utils.Domain {
+		if ip == cassandra.Domain {
 			continue
 		}
 
@@ -36,7 +37,7 @@ func detect_failure_n(t float64) {
 	// Run continuous failure detection
 	for {
 		// Shuffle the order of the alive list
-		utils.Shuffle(utils.Memberlist["alive"])
+		cassandra.Shuffle(cassandra.Memberlist["alive"])
 
 		// Call the detect_failure function
 		detect_failure(t)
