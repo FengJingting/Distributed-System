@@ -27,13 +27,14 @@ func detect_failure(t float64) {
 			//process depend on suspiction mode
 			// If ifSus is false, mark the node as failed and broadcast the status
 			fmt.Printf("Marking node %s as failed and broadcasting failure\n", ip)
-			changeStatus("failed", node.IP, node.Port, fmt.Sprint(node.ID), "alive")
+			changeStatus("failed", fmt.Sprint(node.ID))
+			send_update( fmt.Sprint(node.ID),"failed",cassandra.Domain)
 
 		}
 	}
 }
 
-func detect_failure_n(t float64) {
+func Detect_failure_n(t float64) {
 	// Run continuous failure detection
 	for {
 		// Shuffle the order of the alive list

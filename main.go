@@ -19,7 +19,7 @@ func main() {
     }
 	// Start background processes
 	go memberlist.ListenAndReply("8080") //启动8080端口，监听各个vm发来的ping
-	// go detect_failure_n(5)
+	go memberlist.Detect_failure_n(5)
 
 	// Command interface
 	reader := bufio.NewReader(os.Stdin)

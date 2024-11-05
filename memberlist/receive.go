@@ -43,12 +43,12 @@ func ListenAndReply(port string) {
 		if len(messageParts) == 1 && messageParts[0] == "ping" {
 			// Set packet loss rate
 			// If the array length is 1 and the first element is "ping", return "ack"
-			// _, err = conn.WriteToUDP([]byte("ack"), remoteAddr)
-			// if err != nil {
-			// 	fmt.Println("Error sending ack:", err)
-			// 	continue
-			// }
-			// fmt.Printf("Sent ack to %s\n", remoteAddr.String())
+			_, err = conn.WriteToUDP([]byte("ack"), remoteAddr)
+			if err != nil {
+				fmt.Println("Error sending ack:", err)
+				continue
+			}
+			//fmt.Printf("Sent ack to %s\n", remoteAddr.String())
 
 		} else if len(messageParts) == 5 && messageParts[0] == "failed" {
 			// Handle failed node
@@ -60,6 +60,21 @@ func ListenAndReply(port string) {
 			// 	fmt.Println("Error sending ack:", err)
 			// 	continue
 			// }
+			// 获取失败节点的 IP 和端口
+			failedID := messageParts[1]
+			
+			// 查找并移除失败节点
+			cassandra.CountMutex.Lock()
+			defer cassandra.CountMutex.Unlock()
+			
+			changeStatus("failed", failedID)
+		
+			// 向发送方确认接收到了 "failed" 消息
+			_, err := conn.WriteToUDP([]byte("received"), remoteAddr)
+			if err != nil {
+				fmt.Println("Error sending ack for failed message:", err)
+				return
+			}
 
 		} else if len(messageParts) == 2 && messageParts[0] == "join" {
 			fmt.Printf("Node Added\n")

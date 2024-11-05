@@ -64,19 +64,20 @@ func send_update_whole(status string, selfIP string) {
 func send_ping(ip, port string, t float64) bool {
 	// Send a ping message to a specified node
 	message := "ping"
-	serverAddr, err := net.ResolveTCPAddr("tcp", ip+":"+port)
+	serverAddr, err := net.ResolveUDPAddr("udp", ip+":"+port)
 	if err != nil {
 		fmt.Println("Error resolving address:", err)
 		return false
 	}
 
-	conn, err := net.DialTCP("tcp", nil, serverAddr)
+	conn, err := net.DialUDP("udp", nil, serverAddr)
 	if err != nil {
-		fmt.Println("Error dialing TCP:", err)
+		fmt.Println("Error dialing UDP:", err)
 		return false
 	}
 	defer conn.Close()
 
+	// Send ping message
 	_, err = conn.Write([]byte(message))
 	if err != nil {
 		fmt.Println("Error sending ping:", err)
@@ -85,10 +86,12 @@ func send_ping(ip, port string, t float64) bool {
 	currentTime := time.Now().Format("2006-01-02 15:04:05")
 	fmt.Println("Ping sent to", ip, currentTime)
 
+	// Set a read deadline for the response
 	conn.SetReadDeadline(time.Now().Add(time.Duration(t * float64(time.Second))))
 
+	// Receive the response
 	buffer := make([]byte, 1024)
-	n, err := conn.Read(buffer)
+	n, _, err := conn.ReadFromUDP(buffer)
 	if err != nil {
 		fmt.Println("Error receiving response or timeout:", err)
 		return false
@@ -96,6 +99,7 @@ func send_ping(ip, port string, t float64) bool {
 
 	return string(buffer[:n]) == "ack"
 }
+
 
 func send(ip string, port string, message string) {
 	fmt.Printf("Attempting to send message to IP: %s, Port: %s\n", ip, port)
