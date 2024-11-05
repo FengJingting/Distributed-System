@@ -24,32 +24,42 @@ func send_status(status string, selfIP string) {
 }
 
 func send_update_whole(status string, selfIP string) {
-	// 将 Memberlist 和 Ring 序列化为 JSON
-	memberlistData, err := json.Marshal(cassandra.Memberlist)
+	// Status option: update
+	// Form message with memberlist and ring
+
+	// 1. Serialize memberlist
+	jsonMemberlist, err := json.Marshal(cassandra.Memberlist)
 	if err != nil {
 		fmt.Println("Error encoding memberlist JSON:", err)
 		return
 	}
 
-	ringData, err := json.Marshal(cassandra.Ring)
+	// 2. Remove cyclic references in ring
+	for _, node := range cassandra.Ring.Nodes {
+		node.Predecessor = nil
+		node.Successor = nil
+	}
+
+	// 3. Serialize ring
+	jsonRing, err := json.Marshal(cassandra.Ring)
 	if err != nil {
 		fmt.Println("Error encoding ring JSON:", err)
 		return
 	}
 
-	// 构建消息，将 status、Memberlist 和 Ring 合并到一起
-	message := fmt.Sprintf("%s+%s+%s", status, string(memberlistData), string(ringData))
+	// 4. Restore Predecessor and Successor pointers for all nodes in the ring
+	cassandra.Ring.UpdatePredecessorsAndSuccessors() // 调用恢复前驱和后继的方法
 
-	// 向所有节点发送此消息，除自身外
+	// 5. Send message with memberlist and ring
+	message := fmt.Sprintf("update+%s+%s", string(jsonMemberlist), string(jsonRing))
 	for _, node := range cassandra.Memberlist["alive"] {
-		serverIP := node.IP
-		if serverIP == selfIP {
-			continue
+		if node.IP != selfIP {
+			send(node.IP, node.Port, message)
 		}
-		port := node.Port
-		send(serverIP, port, message)
 	}
+	return
 }
+
 
 func send_ping(ip, port string, t float64) bool {
 	// Send a ping message to a specified node
@@ -88,6 +98,9 @@ func send_ping(ip, port string, t float64) bool {
 }
 
 func send(ip string, port string, message string) {
+	fmt.Printf("Attempting to send message to IP: %s, Port: %s\n", ip, port)
+	fmt.Printf("Message content: %s\n", message)
+
 	serverAddr, err := net.ResolveUDPAddr("udp", ip+":"+port)
 	if err != nil {
 		fmt.Println("Error resolving address:", err)
@@ -107,14 +120,17 @@ func send(ip string, port string, message string) {
 		return
 	}
 
+	// Only attempt to read response once to avoid blocking
 	buffer := make([]byte, 1024)
+	//conn.SetReadDeadline(time.Now().Add(2 * time.Second))  // Set a short timeout
 	n, remoteAddr, err := conn.ReadFromUDP(buffer)
 	if err != nil {
-		fmt.Println("Error receiving response:", err)
+		fmt.Println("Error receiving response or timeout:", err)
 		return
 	}
-	fmt.Printf("Received from %s: %s\n", remoteAddr, string(buffer[:n]))
+	fmt.Printf("Received response from %s: %s\n", remoteAddr, string(buffer[:n]))
 }
+
 
 
 // update (one string)

@@ -55,7 +55,7 @@ func NewConsistentHashRing() *ConsistentHashRing {
 
 
 // updatePredecessorsAndSuccessors 更新所有节点的前驱和后继
-func (ring *ConsistentHashRing) updatePredecessorsAndSuccessors() {
+func (ring *ConsistentHashRing) UpdatePredecessorsAndSuccessors() {
     n := len(ring.SortedHashes)
     for i, hash := range ring.SortedHashes {
         node := ring.Nodes[hash]
@@ -122,7 +122,7 @@ func (ring *ConsistentHashRing) AddRing(node *Node) {
     sort.Slice(ring.SortedHashes, func(i, j int) bool { return ring.SortedHashes[i] < ring.SortedHashes[j] })
 
     // 更新前驱和后继关系（确保环结构的完整性）
-    ring.updatePredecessorsAndSuccessors()
+    ring.UpdatePredecessorsAndSuccessors()
 	// 打印哈希环中的节点及其前驱和后继
 	fmt.Println("Current nodes in the ring:")
 	for _, hash := range Ring.SortedHashes {

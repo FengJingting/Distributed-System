@@ -48,7 +48,7 @@ func ListenAndReply(port string) {
 			// 	fmt.Println("Error sending ack:", err)
 			// 	continue
 			// }
-			//fmt.Printf("Sent ack to %s\n", remoteAddr.String())
+			// fmt.Printf("Sent ack to %s\n", remoteAddr.String())
 
 		} else if len(messageParts) == 5 && messageParts[0] == "failed" {
 			// Handle failed node
@@ -63,55 +63,24 @@ func ListenAndReply(port string) {
 
 		} else if len(messageParts) == 2 && messageParts[0] == "join" {
 			fmt.Printf("Node Added\n")
-			// timestamp := time.Now().Format(time.RFC3339)
-			// newNode := []string{messageParts[1], "8080", timestamp}
-
-			// Add new node to memberlist["alive"]
-			// cassandra.CountMutex.Lock()
-			// newNode := []string{messageParts[1], "8080", timestamp}
-			// cassandra.Memberlist["alive"] = append(cassandra.Memberlist["alive"], newNode)
-			// cassandra.CountMutex.Unlock()
-			// list_mem()
-			// Reply
-			// _, err = conn.WriteToUDP([]byte("received"), remoteAddr)
-			// if err != nil {
-			// 	fmt.Println("Error sending ack:", err)
-			// 	continue
-			// }
-			// send_update_whole("update", cassandra.Domain)
-			
-
 			// 解析消息并调用 addNode 函数添加节点
 			// 调用 addNode 添加节点
 			newIP := messageParts[1]
 			newPort := "8080"  // 使用接收到的端口信息
 			AddNode(newIP, newPort)
-
+			_, err = conn.WriteToUDP([]byte("received"), remoteAddr)
+			if err != nil {
+				fmt.Println("Error sending ack:", err)
+				continue
+			}
 			// 将 memberlist 和 ring 编码为 JSON 并发送回给请求者
-			send_update_whole("update", newIP)
+			send_update_whole("update", cassandra.Domain)
 			// TODO: 写入日志
 			// cassandra.Write_to_log()
 
-		} else if len(messageParts) == 2 && messageParts[0] == "update" {
+		} else if len(messageParts) == 3 && messageParts[0] == "update" {
 			// Node update
 			fmt.Printf("Node Updated:\n")
-			// var newmemberlist Memberlist
-			// err := json.Unmarshal([]byte(messageParts[1]), &newmemberlist)
-			// if err != nil {
-			// 	fmt.Println("Error decoding memberlist JSON:", err)
-			// 	return
-			// }
-			// cassandra.CountMutex.Lock()
-			// memberlist = newmemberlist
-			// cassandra.CountMutex.Unlock()
-			// list_mem()
-			// _, err = conn.WriteToUDP([]byte("received"), remoteAddr)
-			// if err != nil {
-			// 	fmt.Println("Error sending ack:", err)
-			// 	continue
-			// }
-			// cassandra.Write_to_log()
-			 // 解析 `memberlist` JSON 数据
 			 var newMemberlist map[string][]cassandra.Node
 			 err := json.Unmarshal([]byte(messageParts[1]), &newMemberlist)
 			 if err != nil {
@@ -132,7 +101,14 @@ func ListenAndReply(port string) {
 			 cassandra.Memberlist = newMemberlist
 			 *cassandra.Ring = newRing
 			 cassandra.CountMutex.Unlock()
-		 
+			 
+			 // 发送 `ack` 确认消息
+			 _, err = conn.WriteToUDP([]byte("received"), remoteAddr)
+			 if err != nil {
+				 fmt.Println("Error sending ack:", err)
+				 return
+			 }
+			 
 			 // 输出更新后的 `memberlist` 和 `ring`
 			 fmt.Println("Updated Memberlist and Ring:")
 			 List_mem_ids()
@@ -142,15 +118,10 @@ func ListenAndReply(port string) {
 				 fmt.Printf("Node ID=%d, IP=%s, Port=%s\n", node.ID, node.IP, node.Port)
 			 }
 		 
-			 // 发送 `ack` 确认消息
-			 _, err = conn.WriteToUDP([]byte("received"), remoteAddr)
-			 if err != nil {
-				 fmt.Println("Error sending ack:", err)
-				 return
-			 }
+			 
 
 		} else {
-			fmt.Println(messageParts)
+			fmt.Println(len(messageParts))
 		}
 	}
 }
