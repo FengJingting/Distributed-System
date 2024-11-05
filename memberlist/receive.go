@@ -50,7 +50,7 @@ func ListenAndReply(port string) {
 			}
 			//fmt.Printf("Sent ack to %s\n", remoteAddr.String())
 
-		} else if len(messageParts) == 5 && messageParts[0] == "failed" {
+		} else if len(messageParts) == 2 && messageParts[0] == "failed" {
 			// Handle failed node
 			fmt.Printf("Node failed\n")
 			// changeStatus(messageParts[0], messageParts[1], messageParts[2], messageParts[3], "alive")
@@ -62,19 +62,21 @@ func ListenAndReply(port string) {
 			// }
 			// 获取失败节点的 IP 和端口
 			failedID := messageParts[1]
-			
-			// 查找并移除失败节点
-			cassandra.CountMutex.Lock()
-			defer cassandra.CountMutex.Unlock()
-			
-			changeStatus("failed", failedID)
-		
 			// 向发送方确认接收到了 "failed" 消息
 			_, err := conn.WriteToUDP([]byte("received"), remoteAddr)
 			if err != nil {
 				fmt.Println("Error sending ack for failed message:", err)
 				return
 			}
+			
+			// 查找并移除失败节点
+			cassandra.CountMutex.Lock()
+			defer cassandra.CountMutex.Unlock()
+			
+			
+			changeStatus("failed", failedID)
+		
+			
 
 		} else if len(messageParts) == 2 && messageParts[0] == "join" {
 			fmt.Printf("Node Added\n")

@@ -28,7 +28,7 @@ func detect_failure(t float64) {
 			// If ifSus is false, mark the node as failed and broadcast the status
 			fmt.Printf("Marking node %s as failed and broadcasting failure\n", ip)
 			changeStatus("failed", fmt.Sprint(node.ID))
-			send_update( fmt.Sprint(node.ID),"failed",cassandra.Domain)
+			//send_update( fmt.Sprint(node.ID),"failed",cassandra.Domain)
 
 		}
 	}
