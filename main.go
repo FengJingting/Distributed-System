@@ -3,9 +3,11 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"log"
 	"mp3/cassandra"
 	"mp3/file"
 	"mp3/memberlist"
+	"net"
 	"os"
 	"strings"
 )
@@ -16,11 +18,14 @@ func main() {
 	// 判断是否为 Introducer 节点
 	if cassandra.Introducer == cassandra.Domain {
 		fmt.Println("This node is the Introducer. Adding itself to the member list.")
-		memberlist.AddNode(cassandra.Domain, cassandra.Port) // 调用 addNode 函数将自己添加到成员列表
+		memberlist.AddNode(cassandra.Domain, cassandra.MemberPort) // 调用 addNode 函数将自己添加到成员列表
 	}
 	// Start background processes
-	go memberlist.ListenAndReply("8080") //启动8080端口，监听各个vm发来的ping
+	go memberlist.ListenAndReply(cassandra.MemberPort) //启动8080端口，监听各个vm发来的ping
 	go memberlist.Detect_failure_n(50)
+
+	// 启动文件操作服务器 9090
+	go startFileOperationServer()
 
 	// Command interface
 	reader := bufio.NewReader(os.Stdin)
@@ -72,14 +77,41 @@ func main() {
 		// case "multiappend":
 		// 	multiappend()
 		// display operation
-		// case "is":
-		// 	is()
-		// case "store":
-		// 	store()
-		// case "getfromreplica":
-		// 	getfromreplica()
+		case "is":
+			file.Is()
+		case "store":
+			file.Store()
+		case "getfromreplica":
+			file.Getfromreplica()
 		default:
 			fmt.Println("Unknown command")
 		}
+	}
+}
+
+// 启动文件操作服务器函数
+func startFileOperationServer() {
+	listener, err := net.Listen("tcp", ":"+cassandra.FilePort) // 在9090端口上启动监听
+	if err != nil {
+		log.Fatalf("Error starting file operation server: %v", err)
+	}
+	defer listener.Close()
+
+	fmt.Printf("File operation server listening on port: %s", cassandra.FilePort)
+
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			log.Printf("Error accepting connection: %v", err)
+			continue
+		}
+
+		// 在 goroutine 中处理每个连接
+		go func(c net.Conn) {
+			defer c.Close()
+			if err := file.HandleFileOperation(c); err != nil {
+				log.Printf("Error handling file operation: %v", err)
+			}
+		}(conn)
 	}
 }

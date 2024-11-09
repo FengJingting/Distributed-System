@@ -11,7 +11,7 @@ import (
 )
 
 // is function for handling lsHyDFSfilename command
-func is() {
+func Is() {
     fmt.Print("is_ function called: ")
     fmt.Print("请输入文件名: ")
     reader := bufio.NewReader(os.Stdin)
@@ -32,20 +32,23 @@ func lsHyDFSfilename(filename string) []string {
 
         serverAddr := server.IP
         serverID := fmt.Sprintf("%d", server.ID)
-
+        // 这一步卡住了
         content, err := fetchFile(*server, filename)
-        if err == nil && len(content) > 0 {
+        if err == nil && content != nil {
             result = append(result, fmt.Sprintf("VM Address: %s, VM ID: %s", serverAddr, serverID))
         } else {
             fmt.Printf("File not found on server: %s (ID: %s)\n", serverAddr, serverID)
         }
+
         server = server.Successor
     }
+    
     fmt.Println("Get_server")
     return result
 }
 
-func store() {
+// 测试通过
+func Store() {
     fmt.Print("store function called: ")
     // Retrieve local node information based on Domain/IP
     var localNodeID uint64
@@ -86,7 +89,7 @@ func getServerFromAddress(VMaddress string) (*cassandra.Node, error) {
     return nil, fmt.Errorf("Server with address %s not found", VMaddress)
 }
 
-func getfromreplica() {
+func Getfromreplica() {
     fmt.Print("请输入 VMaddress, HyDFSfilename 和 localfilename（用空格分隔）: ")
     reader := bufio.NewReader(os.Stdin)
     input, _ := reader.ReadString('\n')
@@ -108,7 +111,7 @@ func getfromreplica() {
         fmt.Printf("Error: %v\n", err)
         return
     }
-
+    // 这一步卡住了
     content, err := fetchFile(*server, HyDFSfilename)
     if err != nil {
         fmt.Printf("error fetching file: %v\n", err)

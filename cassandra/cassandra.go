@@ -30,7 +30,8 @@ func InitConfig() {
 
 	// 将配置值赋给全局变量
 	Domain = config.Domain
-	Port = config.Port
+	FilePort = config.FilePort
+	MemberPort = config.MemberPort
 	Introducer = config.Introducer
 	// fmt.Print(Domain, Port, Introducer)
 

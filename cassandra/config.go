@@ -12,7 +12,8 @@ var Ring *ConsistentHashRing
 // Config 结构体
 type Config struct {
     Domain     string                   `json:"domain"`
-    Port       string                   `json:"port"`
+    FilePort   string                   `json:"fileport"`
+    MemberPort string                   `json:"memberport"`
     Introducer string                   `json:"introducer"`
 }
 
@@ -39,7 +40,8 @@ type ConsistentHashRing struct {
 var (
     Introducer  string
     Domain      string
-    Port        string
+    MemberPort  string
+    FilePort    string
     CountMutex  sync.Mutex
     Memberlist  = map[string][]Node{
         "alive":   {},

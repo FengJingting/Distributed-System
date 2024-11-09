@@ -1,5 +1,6 @@
 {
     "domain": "fa24-cs425-2901.cs.illinois.edu",
-    "port": "8080",
+    "fileport": "9090",
+    "memberport":"8080",
     "introducer": "fa24-cs425-2901.cs.illinois.edu"
 }

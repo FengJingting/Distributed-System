@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"mp3/cassandra"
 	"mp3/utils"
+	// "net"
 )
 
 // super parematers
@@ -62,8 +63,12 @@ func getTargetServer(filename string) *cassandra.Node {
 	hashValue := utils.Hash(filename)
 	// control region of hash value
 	hashValue = hashValue % RingLength
+	fmt.Println(hashValue)
 	// find
 	for _, node := range cassandra.Memberlist["alive"] {
+		if len(cassandra.Memberlist["alive"]) == 1 {
+			return &node
+		}
 		if node.Predecessor != nil && uint64(node.Predecessor.ID) < hashValue && uint64(node.ID) > hashValue {
 			return &node
 		}
@@ -73,15 +78,18 @@ func getTargetServer(filename string) *cassandra.Node {
 
 // Send a file to a node (for create and append)
 func sendFile(node cassandra.Node, filename string, content []byte) error {
-	address := string(node.IP) + ":" + node.Port
+	fmt.Println("---------send_sendFile-----------")
+	address := string(node.IP) + ":9090"
+	fmt.Println("sendFile_address: ", address)
 	conn, err := net.Dial("tcp", address)
+	fmt.Println("conn:", conn)
 	if err != nil {
 		return fmt.Errorf("connection error: %s, %v", address, err)
 	}
 	defer conn.Close()
 
-	// 待完成：以什么格式传输要写的content，本地收到之后应该如何创建
 	message := fmt.Sprintf("CREATE %s %s", filename, content)
+	fmt.Println("message: ", message)
 	_, err = conn.Write([]byte(message))
 	return err
 }
@@ -95,8 +103,10 @@ func fetchFile(node cassandra.Node, filename string) ([]byte, error) {
         return content.([]byte), nil
     }
 	//___________________________cache________________________________
-	address := string(node.IP) + ":" + node.Port
+	address := string(node.IP) + ":9090" 
+	fmt.Println("address:", address)
 	conn, err := net.Dial("tcp", address)
+	fmt.Println("conn:", conn)
 	if err != nil {
 		return nil, fmt.Errorf("connection error: %v", err)
 	}
@@ -104,7 +114,9 @@ func fetchFile(node cassandra.Node, filename string) ([]byte, error) {
 
 	// Protocol: "GET filename"
 	message := fmt.Sprintf("GET %s", filename)
+	fmt.Println("message:", message)
 	_, err = conn.Write([]byte(message))
+	fmt.Println("write")
 	if err != nil {
 		return nil, fmt.Errorf("error sending request: %v", err)
 	}
@@ -115,7 +127,7 @@ func fetchFile(node cassandra.Node, filename string) ([]byte, error) {
 
 // Send append content to a server
 func sendAppend(node cassandra.Node, filename string, content []byte) error {
-	address := string(node.IP) + ":" + node.Port
+	address := string(node.IP) + ":9090"
 	conn, err := net.Dial("tcp", address)
 	if err != nil {
 		return fmt.Errorf("connection error: %v", err)
@@ -131,51 +143,77 @@ func sendAppend(node cassandra.Node, filename string, content []byte) error {
 // ---------------------------Basic file operations---------------------
 // Create
 func Create(localFilename, hyDFSFilename string) error {
-	content, err := ioutil.ReadFile(localFilename)
+	fmt.Println("------------send_create-------------")
+	localFilepath := LocalDir + localFilename
+	fmt.Println("localFilepath: ", localFilepath)
+	content, err := ioutil.ReadFile(localFilepath)
+	fmt.Println("content: ", content)
 	if err != nil {
 		return fmt.Errorf("error reading local file: %v", err)
 	}
 	server := getTargetServer(hyDFSFilename)
+	fmt.Println("server: ", server)
 	send1 := sendFile(*server, hyDFSFilename, content)
-	send2 := sendFile(*server.Successor, hyDFSFilename, content)
-	send3 := sendFile(*server.Successor.Successor, hyDFSFilename, content)
-	if send1 != nil || send2 != nil || send3 != nil {
-		return fmt.Errorf("sendFile errors: send1: %v, send2: %v, send3: %v", send1, send2, send3)
+	fmt.Println("send1")
+	if send1 != nil {
+		return fmt.Errorf("sendFile errors: send1: %v", send1)
 	} else {
 		return nil
 	}
+	// send2 := sendFile(*server.Successor, hyDFSFilename, content)
+	// send3 := sendFile(*server.Successor.Successor, hyDFSFilename, content)
+	// if send1 != nil || send2 != nil || send3 != nil {
+	// 	return fmt.Errorf("sendFile errors: send1: %v, send2: %v, send3: %v", send1, send2, send3)
+	// } else {
+	// 	return nil
+	// }
 }
 
 // Get (fetch)
 func Get(hyDFSFilename, localFilename string) error {
-	server := getTargetServer(hyDFSFilename)
+	fmt.Println("------------send_get-------------")
+	hyDFSFilepath := DfsDir + hyDFSFilename
+	fmt.Println("hyDFSFilepath:", hyDFSFilepath)
+	server := getTargetServer(hyDFSFilepath)
+	fmt.Println("server:", server)
 	content, err := fetchFile(*server, hyDFSFilename)
+	fmt.Println("content:", content)
 	if err != nil {
 		return fmt.Errorf("error fetching file: %v", err)
 	}
 	localFilepath := LocalDir + localFilename
+	fmt.Println("localFilepath:", localFilepath)
 	return ioutil.WriteFile(localFilepath, content, 0644)
 }
 
 // Append
 func Append(localFilename, hyDFSFilename string) error {
-	content, err := ioutil.ReadFile(localFilename)
+	fmt.Println("------------send_append-------------")
+	localFilepath := LocalDir + localFilename
+	fmt.Println("localFilepath:", localFilepath)
+	content, err := ioutil.ReadFile(localFilepath)
 	if err != nil {
 		return fmt.Errorf("error reading local file: %v", err)
 	}
 	server := getTargetServer(hyDFSFilename)
 	append1 := sendAppend(*server, hyDFSFilename, content)
-	append2 := sendAppend(*server.Successor, hyDFSFilename, content)
-	append3 := sendAppend(*server.Successor.Successor, hyDFSFilename, content)
-	if append1 != nil || append2 != nil || append3 != nil {
-		return fmt.Errorf("sendFile errors: append1: %v, append2: %v, append3: %v", append1, append2, append3)
+	fmt.Println("append1")
+	if append1 != nil {
+		return fmt.Errorf("sendFile errors: append1: %v", append1)
 	} else {
 		return nil
 	}
+	// append2 := sendAppend(*server.Successor, hyDFSFilename, content)
+	// append3 := sendAppend(*server.Successor.Successor, hyDFSFilename, content)
+	// if append1 != nil || append2 != nil || append3 != nil {
+	// 	return fmt.Errorf("sendFile errors: append1: %v, append2: %v, append3: %v", append1, append2, append3)
+	// } else {
+	// 	return nil
+	// }
 }
 
 func Merge() {
-	fmt.Println("merge function called")
+	fmt.Println("------------send_merge-------------")
 	// fmt.Print("请输入文件名: ")
 	// reader := bufio.NewReader(os.Stdin)
 	// filename, _ := reader.ReadString('\n')

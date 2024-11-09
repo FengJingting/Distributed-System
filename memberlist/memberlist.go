@@ -111,7 +111,7 @@ func Join() {
     fmt.Println("join function called")
     // 发送加入消息给 Introducer
     message := "join+" + cassandra.Domain
-    send(cassandra.Introducer, cassandra.Port, message)
+    send(cassandra.Introducer, cassandra.MemberPort, message)
 }
 
 // func changeStatus(status, nodeIP, port, timestamp, initial string) {
