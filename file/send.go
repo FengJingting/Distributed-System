@@ -1,9 +1,9 @@
 package file
-
+//_________________________cache__________________________________
 import (
 	"fmt"
 	"net"
-
+	"github.com/hashicorp/golang-lru" // LRU Cache library
 	//"time"
 	"io/ioutil"
 	"mp3/cassandra"
@@ -15,8 +15,21 @@ const (
 	RingLength uint64 = 1 << 32
 	DfsDir            = "./files/hydfs"
 	LocalDir          = "./files/local"
+	CacheSize         = 100 // Set the cache size
 )
 
+// Cache for storing file contents
+var fileCache *lru.Cache
+func init() {
+    // Initialize the LRU cache with the specified size
+    cache, err := lru.New(CacheSize)
+    if err != nil {
+        fmt.Println("Error initializing LRU cache:", err)
+        return
+    }
+    fileCache = cache
+}
+//___________________________cache________________________________
 // ----------------------node---------------------
 // Node operator
 func AddNode(node cassandra.Node) {
@@ -75,6 +88,13 @@ func sendFile(node cassandra.Node, filename string, content []byte) error {
 
 // Fetch a file from a server
 func fetchFile(node cassandra.Node, filename string) ([]byte, error) {
+	//_________________________cache__________________________________
+	// Check if the file is already in cache
+    if content, found := fileCache.Get(filename); found {
+        fmt.Println("File found in cache")
+        return content.([]byte), nil
+    }
+	//___________________________cache________________________________
 	address := string(node.IP) + ":" + node.Port
 	conn, err := net.Dial("tcp", address)
 	if err != nil {
