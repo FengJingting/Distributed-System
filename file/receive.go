@@ -26,6 +26,7 @@ func HandleFileOperation(conn net.Conn) error {
 
 	switch operation {
 	case "GET":
+		fmt.Println("------------receive_get-------------")
 		// 读取文件内容并返回
 		content, err := ioutil.ReadFile(filename)
 		if err != nil {
@@ -35,6 +36,7 @@ func HandleFileOperation(conn net.Conn) error {
 		fmt.Printf("File %s read and sent back successfully\n", filename)
 
 	case "CREATE":
+		fmt.Println("------------receive_create-------------")
 		if len(parts) < 3 {
 			return fmt.Errorf("missing content for CREATE operation")
 		}
@@ -47,6 +49,7 @@ func HandleFileOperation(conn net.Conn) error {
 		fmt.Printf("File %s created successfully in local directory\n", filename)
 
 	case "APPEND":
+		fmt.Println("------------receive_append-------------")
 		if len(parts) < 3 {
 			return fmt.Errorf("missing content for APPEND operation")
 		}

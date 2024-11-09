@@ -3,9 +3,11 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"log"
 	"mp3/cassandra"
 	"mp3/file"
 	"mp3/memberlist"
+	"net"
 	"os"
 	"strings"
 )
@@ -21,6 +23,9 @@ func main() {
 	// Start background processes
 	go memberlist.ListenAndReply("8080") //启动8080端口，监听各个vm发来的ping
 	go memberlist.Detect_failure_n(50)
+
+	// 启动文件操作服务器 9090
+	go startFileOperationServer()
 
 	// Command interface
 	reader := bufio.NewReader(os.Stdin)
@@ -81,5 +86,32 @@ func main() {
 		default:
 			fmt.Println("Unknown command")
 		}
+	}
+}
+
+// 启动文件操作服务器函数
+func startFileOperationServer() {
+	listener, err := net.Listen("tcp", ":8080") // 在9090端口上启动监听
+	if err != nil {
+		log.Fatalf("Error starting file operation server: %v", err)
+	}
+	defer listener.Close()
+
+	fmt.Println("File operation server listening on port 8080")
+
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			log.Printf("Error accepting connection: %v", err)
+			continue
+		}
+
+		// 在 goroutine 中处理每个连接
+		go func(c net.Conn) {
+			defer c.Close()
+			if err := file.HandleFileOperation(c); err != nil {
+				log.Printf("Error handling file operation: %v", err)
+			}
+		}(conn)
 	}
 }

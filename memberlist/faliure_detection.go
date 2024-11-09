@@ -3,6 +3,7 @@ package memberlist
 import (
 	"fmt"
 	"time"
+
 	// "mp3/utils"
 	"mp3/cassandra"
 )
@@ -13,7 +14,7 @@ func detect_failure(t float64) {
 	// Iterate through each alive node to perform ping
 	for i := 0; i < len(aliveNodes); i++ {
 		node := aliveNodes[i]
-		ip := node.IP   // IP
+		ip := node.IP     // IP
 		port := node.Port // Port
 
 		// skip itself
