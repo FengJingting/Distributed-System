@@ -28,7 +28,13 @@ func HandleFileOperation(conn net.Conn) error {
 	case "GET":
 		fmt.Println("------------receive_get-------------")
 		// 读取文件内容并返回
-		content, err := ioutil.ReadFile(filename)
+		filepath := DfsDir + filename
+		_, err := os.Stat(filepath)
+		if os.IsNotExist(err) {
+			fmt.Println("File Not Exist")
+			return nil
+		}
+		content, err := ioutil.ReadFile(filepath)
 		if err != nil {
 			return fmt.Errorf("error reading file %s: %v", filename, err)
 		}
