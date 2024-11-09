@@ -14,8 +14,8 @@ import (
 // super parematers
 const (
 	RingLength uint64 = 1 << 32
-	DfsDir            = "./files/hydfs"
-	LocalDir          = "./files/local"
+	DfsDir            = "./files/hydfs/"
+	LocalDir          = "./files/local/"
 	CacheSize         = 100 // Set the cache size
 )
 
