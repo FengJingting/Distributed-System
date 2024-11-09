@@ -15,6 +15,7 @@ import (
 func main() {
 	// load configs
 	cassandra.InitConfig()
+	file.Init()
 	// 判断是否为 Introducer 节点
 	if cassandra.Introducer == cassandra.Domain {
 		fmt.Println("This node is the Introducer. Adding itself to the member list.")

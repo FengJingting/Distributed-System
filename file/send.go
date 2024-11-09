@@ -21,7 +21,7 @@ const (
 
 // Cache for storing file contents
 var fileCache *lru.Cache
-func init() {
+func Init() {
     // Initialize the LRU cache with the specified size
     cache, err := lru.New(CacheSize)
     if err != nil {
@@ -30,6 +30,20 @@ func init() {
     }
     fileCache = cache
 }
+
+// Function to print contents of the cache
+func PrintCacheContents() {
+    fmt.Println("Cache contents:")
+
+    // Get keys and print each key-value pair in the cache
+    for _, key := range fileCache.Keys() {
+        if value, found := fileCache.Get(key); found {
+            fmt.Printf("Key: %v, Value: %v\n", key, value)
+        }
+    }
+    fmt.Println("End of cache contents.")
+}
+
 //___________________________cache________________________________
 // ----------------------node---------------------
 // Node operator
@@ -79,7 +93,7 @@ func getTargetServer(filename string) *cassandra.Node {
 // Send a file to a node (for create and append)
 func sendFile(node cassandra.Node, filename string, content []byte) error {
 	fmt.Println("---------send_sendFile-----------")
-	address := string(node.IP) + ":9090"
+	address := string(node.IP) + ":" + cassandra.FilePort //":9090"
 	fmt.Println("sendFile_address: ", address)
 	conn, err := net.Dial("tcp", address)
 	fmt.Println("conn:", conn)
@@ -87,8 +101,8 @@ func sendFile(node cassandra.Node, filename string, content []byte) error {
 		return fmt.Errorf("connection error: %s, %v", address, err)
 	}
 	defer conn.Close()
-
-	message := fmt.Sprintf("CREATE %s %s", filename, content)
+	fileSize := len(content)
+	message := fmt.Sprintf("CREATE %s\n%d\n%s", filename, fileSize, content)
 	fmt.Println("message: ", message)
 	_, err = conn.Write([]byte(message))
 	return err
@@ -103,7 +117,7 @@ func fetchFile(node cassandra.Node, filename string) ([]byte, error) {
         return content.([]byte), nil
     }
 	//___________________________cache________________________________
-	address := string(node.IP) + ":9090" 
+	address := string(node.IP) + ":" + cassandra.FilePort //":9090" 
 	fmt.Println("address:", address)
 	conn, err := net.Dial("tcp", address)
 	fmt.Println("conn:", conn)
@@ -113,7 +127,7 @@ func fetchFile(node cassandra.Node, filename string) ([]byte, error) {
 	defer conn.Close()
 
 	// Protocol: "GET filename"
-	message := fmt.Sprintf("GET %s", filename)
+	message := fmt.Sprintf("GET %s\n", filename)
 	fmt.Println("message:", message)
 	_, err = conn.Write([]byte(message))
 	fmt.Println("write")
@@ -127,7 +141,7 @@ func fetchFile(node cassandra.Node, filename string) ([]byte, error) {
 
 // Send append content to a server
 func sendAppend(node cassandra.Node, filename string, content []byte) error {
-	address := string(node.IP) + ":9090"
+	address := string(node.IP) + ":" + cassandra.FilePort //":9090"
 	conn, err := net.Dial("tcp", address)
 	if err != nil {
 		return fmt.Errorf("connection error: %v", err)
@@ -135,7 +149,8 @@ func sendAppend(node cassandra.Node, filename string, content []byte) error {
 	defer conn.Close()
 
 	// Protocol: "APPEND filename content"
-	message := fmt.Sprintf("APPEND %s %s", filename, content)
+	fileSize := len(content)
+	message := fmt.Sprintf("APPEND %s\n%d\n%s", filename, fileSize, content)
 	_, err = conn.Write([]byte(message))
 	return err
 }

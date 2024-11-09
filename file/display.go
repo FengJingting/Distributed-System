@@ -4,10 +4,11 @@ import (
     "bufio"
     "fmt"
     "os"
-    "path/filepath"
+    // "path/filepath"
     "strings"
     "mp3/utils"
     "mp3/cassandra"
+    "io/ioutil"
 )
 
 // is function for handling lsHyDFSfilename command
@@ -17,13 +18,34 @@ func Is() {
     reader := bufio.NewReader(os.Stdin)
     filename, _ := reader.ReadString('\n')
     filename = strings.TrimSpace(filename) // Remove newline and trim
-    lsHyDFSfilename(filename) 
+    // Get the list of VM addresses and IDs that store the file
+    result := lsHyDFSfilename(filename)
+    
+    // Print each VM address and ID in the result
+    if len(result) > 0 {
+        fmt.Println("存有该文件的虚拟机信息：")
+        for _, entry := range result {
+            fmt.Println(entry)
+        }
+    } else {
+        fmt.Println("没有找到存有该文件的虚拟机。")
+    }
+}
+
+// Helper function to get server by ID
+func getServerByID(serverID uint64) *cassandra.Node {
+    for _, node := range cassandra.Ring.Nodes {
+        if node.ID == serverID {
+            return node
+        }
+    }
+    return nil
 }
 
 func lsHyDFSfilename(filename string) []string {
     var result []string
     server := getTargetServer(filename)
-
+    fmt.Printf("server",server)
     for i := 0; i < 3; i++ {
         if server == nil {
             fmt.Println("Server not found.")
@@ -32,7 +54,6 @@ func lsHyDFSfilename(filename string) []string {
 
         serverAddr := server.IP
         serverID := fmt.Sprintf("%d", server.ID)
-        // 这一步卡住了
         content, err := fetchFile(*server, filename)
         if err == nil && content != nil {
             result = append(result, fmt.Sprintf("VM Address: %s, VM ID: %s", serverAddr, serverID))
@@ -40,7 +61,12 @@ func lsHyDFSfilename(filename string) []string {
             fmt.Printf("File not found on server: %s (ID: %s)\n", serverAddr, serverID)
         }
 
-        server = server.Successor
+        // Fetch the next server using server.Successor.ID
+        if server.Successor != nil {
+            server = getServerByID(server.Successor.ID)
+        } else {
+            break
+        }
     }
     
     fmt.Println("Get_server")
@@ -96,29 +122,38 @@ func Getfromreplica() {
     input = strings.TrimSpace(input)
 
     parts := strings.Split(input, " ")
+    fmt.Println(parts)
     if len(parts) != 3 {
         fmt.Println("输入格式不正确，请确保输入三个参数并用空格分隔。")
-        return 
+        return
     }
 
     VMaddress := parts[0]
-    HyDFSfilename := parts[1]
+    hyDFSfilename := parts[1]
     localfilename := parts[2]
-    fmt.Printf("VM Address: %s, HyDFS Filename: %s, Local Filename: %s\n", VMaddress, HyDFSfilename, localfilename)
+    fmt.Printf("VM Address: %s, HyDFS Filename: %s, Local Filename: %s\n", VMaddress, hyDFSfilename, localfilename)
 
+    // Get the server information based on the VM address
     server, err := getServerFromAddress(VMaddress)
     if err != nil {
         fmt.Printf("Error: %v\n", err)
         return
     }
-    // 这一步卡住了
-    content, err := fetchFile(*server, HyDFSfilename)
+
+    // Fetch the file from the server
+    content, err := fetchFile(*server, hyDFSfilename)
     if err != nil {
-        fmt.Printf("error fetching file: %v\n", err)
+        fmt.Printf("Error fetching file: %v\n", err)
         return
     }
-    localFilepath := filepath.Join("localDir", localfilename)
-    if err := os.WriteFile(localFilepath, content, 0644); err != nil {
+    fmt.Println("Content fetched:", content)
+
+    // Save the content to the specified local file path
+    localFilepath := LocalDir + "/" + localfilename
+    err = ioutil.WriteFile(localFilepath, content, 0644)
+    if err != nil {
         fmt.Printf("Error writing to local file: %v\n", err)
+        return
     }
+    fmt.Println("File saved at:", localFilepath)
 }
