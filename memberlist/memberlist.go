@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"os"
 	"time"
+    "sync"
 )
 
 
@@ -134,24 +135,32 @@ func Join() {
     send(cassandra.Introducer, cassandra.MemberPort, message)
 }
 
+// 在cassandra包中添加全局互斥锁
+var changeStatusMutex sync.Mutex
+
+// 修改changeStatus函数
 func changeStatus(newStatus, nodeID string) {
-    fmt.Println("change status called")
+    // 使用全局互斥锁，确保更改操作的原子性
+    changeStatusMutex.Lock()
+    defer changeStatusMutex.Unlock()
+
+    //fmt.Println("change status called")
     var nodeToMove cassandra.Node
     var found bool
+
     // 在 `Memberlist` 中找到节点的当前状态并记录其状态
     for status, nodes := range cassandra.Memberlist {
-        fmt.Println("hello",status, nodes)
+        //fmt.Println("hello", status, nodes)
         for i, node := range nodes {
-            fmt.Println("find node")
+            //fmt.Println("find node")
             if fmt.Sprint(node.ID) == nodeID {
-                fmt.Println("get it")
+                //fmt.Println("get it")
                 nodeToMove = node
 
                 // 从当前状态列表中删除节点
-                cassandra.CountMutex.Lock()
                 cassandra.Memberlist[status] = append(nodes[:i], nodes[i+1:]...)
-                cassandra.CountMutex.Unlock()
                 found = true
+                //fmt.Println("remove it")
                 break
             }
         }
@@ -162,29 +171,21 @@ func changeStatus(newStatus, nodeID string) {
 
     // 如果找到节点，则将其添加到新的状态列表并从哈希环中删除
     if found {
-        // 将节点添加到 `newStatus` 列表中
-        cassandra.CountMutex.Lock()
         cassandra.Memberlist[newStatus] = append(cassandra.Memberlist[newStatus], nodeToMove)
-        cassandra.CountMutex.Unlock()
-        // 从一致性哈希环中删除节点
-        cassandra.CountMutex.Lock()
-        cassandra.Ring.RemoveNode(nodeToMove.ID) // 假设 `RemoveNode` 方法已在 `Ring` 中实现
-        cassandra.CountMutex.Unlock()
+        cassandra.Ring.RemoveNode(nodeToMove.ID)
+
         // 如果newStatus是failed，则进行副本检查
-        // fmt.Println("hello",newStatus)
         if newStatus == "failed" {
             performReplicaCheck()
         }
 
         // 打印更新后的 `Memberlist` 以供调试
         List_mem_ids() // 调试用，打印当前 `Memberlist` 的状态
-        // Write_to_log() // 将更新后的信息写入日志
-        // TODO: 如果newStatus是failed的话，调用自我检查函数，检查对于自己的所有文件，是否从自己的开始的后继中replica的数量是否正确（是否一共加起来为三份）
-
     } else {
         fmt.Printf("Node with ID %s not found in current memberlist.\n", nodeID)
     }
 }
+
 
 func performReplicaCheck() {
     fmt.Println("Performing replica check on successor nodes...")
