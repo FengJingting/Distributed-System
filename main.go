@@ -23,7 +23,7 @@ func main() {
 	}
 	// Start background processes
 	go memberlist.ListenAndReply(cassandra.MemberPort) //启动8080端口，监听各个vm发来的ping
-	go memberlist.Detect_failure_n(5)
+	go memberlist.Detect_failure_n(20)
 
 	// 启动文件操作服务器 9090
 	go startFileOperationServer()

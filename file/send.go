@@ -93,7 +93,7 @@ func getTargetServer(filename string) *cassandra.Node {
 
 	// Check if only one node is alive, in which case it handles all requests
 	if len(nodes) == 1 {
-		return &nodes[0]
+		return cassandra.Ring.Nodes[nodes[0].ID]
 	}
 
 	for _, node := range nodes {
@@ -170,15 +170,39 @@ func SendFile(node cassandra.Node, filename string, content []byte) error {
 	return nil
 }
 
+func FetchFileReplica(node cassandra.Node, filename string) ([]byte, error) {
+	address := string(node.IP) + ":" + cassandra.FilePort //":9090"
+	fmt.Println("address:", address)
+	conn, err := net.Dial("tcp", address)
+	fmt.Println("conn:", conn)
+	if err != nil {
+		return nil, fmt.Errorf("connection error: %v", err)
+	}
+	defer conn.Close()
+
+	// Protocol: "GET filename"
+	message := fmt.Sprintf("GET %s\n", filename)
+	fmt.Println("message:", message)
+	_, err = conn.Write([]byte(message))
+	fmt.Println("write")
+	if err != nil {
+		return nil, fmt.Errorf("error sending request: %v", err)
+	}
+
+	response, err := ioutil.ReadAll(conn)
+	return response, err
+}
+
+
 // Fetch a file from a server
 func FetchFile(node cassandra.Node, filename string) ([]byte, error) {
 	//_________________________cache__________________________________
 	// Check if the file is already in cache
 	// PrintCacheContents()
-	if content, found := fileCache.Get(filename); found {
-		fmt.Println("File found in cache")
-		return content.([]byte), nil
-	}
+	// if content, found := fileCache.Get(filename); found {
+	// 	fmt.Println("File found in cache")
+	// 	return content.([]byte), nil
+	// }
 	//___________________________cache________________________________
 	address := string(node.IP) + ":" + cassandra.FilePort //":9090"
 	fmt.Println("address:", address)
@@ -201,8 +225,8 @@ func FetchFile(node cassandra.Node, filename string) ([]byte, error) {
 	response, err := ioutil.ReadAll(conn)
 	//__________________________add to cache________________________________
 	// Add fetched file content to cache
-	fileCache.Add(filename, response)
-	fmt.Println("File added to cache:", filename)
+	// fileCache.Add(filename, response)
+	// fmt.Println("File added to cache:", filename)
 	//__________________________end add to cache____________________________
 	return response, err
 }
@@ -237,6 +261,39 @@ func sendAppend(node cassandra.Node, filename string, content []byte) error {
 
 // ---------------------------Basic file operations---------------------
 // Create
+// func Create(localFilename, hyDFSFilename string, continueAfterQuorum bool) error {
+// 	fmt.Println("------------send_create-------------")
+// 	localFilepath := LocalDir + localFilename
+// 	content, err := ioutil.ReadFile(localFilepath)
+// 	if err != nil {
+// 		return fmt.Errorf("error reading local file: %v", err)
+// 	}
+// 	server := getTargetServer(hyDFSFilename)
+// 	fmt.Println("server",server)
+// 	successCount := 0
+// 	servers := []*cassandra.Node{server, server.Successor, server.Successor.Successor}
+// 	fmt.Println(servers)
+// 	for _, srv := range servers {
+// 		if srv == nil {
+// 			continue
+// 		}
+// 		if err := SendFile(*srv, hyDFSFilename, content); err == nil {
+// 			successCount++
+// 		}
+
+// 		// 如果达到 Quorum，且不需要继续写入剩余副本，则退出循环
+// 		if successCount >= W && !continueAfterQuorum {
+// 			fmt.Println("Write quorum reached")
+// 			return nil
+// 		}
+// 	}
+
+// 	if successCount >= W {
+// 		fmt.Println("Write quorum reached after writing all nodes")
+// 		return nil
+// 	}
+// 	return fmt.Errorf("write quorum not reached, only %d nodes succeeded", successCount)
+// }
 func Create(localFilename, hyDFSFilename string, continueAfterQuorum bool) error {
 	fmt.Println("------------send_create-------------")
 	localFilepath := LocalDir + localFilename
@@ -245,32 +302,69 @@ func Create(localFilename, hyDFSFilename string, continueAfterQuorum bool) error
 		return fmt.Errorf("error reading local file: %v", err)
 	}
 	server := getTargetServer(hyDFSFilename)
-	fmt.Println("server",server)
-	successCount := 0
+	fmt.Println("server", server)
+
+	// Define servers to replicate the file
 	servers := []*cassandra.Node{server, server.Successor, server.Successor.Successor}
-	fmt.Println(servers)
+	fmt.Println("servers:", servers)
+
+	// Use a wait group to manage goroutines
+	var wg sync.WaitGroup
+	// Channel to capture successful writes
+	successChan := make(chan struct{}, len(servers))
+	// Mutex to safely update the success count
+	var successCount int
+	var successMu sync.Mutex
+	// Channel to signal early return on quorum
+	done := make(chan struct{})
+
 	for _, srv := range servers {
 		if srv == nil {
 			continue
 		}
-		if err := SendFile(*srv, hyDFSFilename, content); err == nil {
-			successCount++
-		}
+		// Increment wait group for each server
+		wg.Add(1)
+		go func(s *cassandra.Node) {
+			defer wg.Done()
+			// Attempt to send the file to the server
+			if err := SendFile(*s, hyDFSFilename, content); err == nil {
+				successMu.Lock()
+				successCount++
+				if successCount >= W && !continueAfterQuorum {
+					// Signal early return on quorum if continueAfterQuorum is false
+					close(done)
+				}
+				successMu.Unlock()
+				successChan <- struct{}{}
+			}
+		}(srv)
+	}
 
-		// 如果达到 Quorum，且不需要继续写入剩余副本，则退出循环
-		if successCount >= W && !continueAfterQuorum {
-			fmt.Println("Write quorum reached")
+	// Wait for quorum or all servers to complete
+	go func() {
+		wg.Wait()
+		close(successChan)
+	}()
+
+	// Monitor the success count to check for quorum, with optional early return
+	select {
+	case <-done:
+		fmt.Println("Write quorum reached")
+		return nil
+	case <-successChan:
+		if successCount >= W {
+			fmt.Println("Write quorum reached after writing all nodes")
 			return nil
 		}
 	}
 
+	// Final quorum check after all attempts
 	if successCount >= W {
 		fmt.Println("Write quorum reached after writing all nodes")
 		return nil
 	}
 	return fmt.Errorf("write quorum not reached, only %d nodes succeeded", successCount)
 }
-
 // func Create(localFilename, hyDFSFilename string) error {
 // 	fmt.Println("------------send_create-------------")
 // 	localFilepath := LocalDir + localFilename

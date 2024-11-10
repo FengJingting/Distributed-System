@@ -201,6 +201,7 @@ func performReplicaCheck() {
         if !fileEntry.IsDir() { // Only process files
             fileName := fileEntry.Name()
             replicaCount := countReplicas(fileName)
+            fmt.Println("replicaCount",replicaCount)
             if replicaCount < 3 {
                 fmt.Printf("Insufficient replicas for file %s: found %d replicas, expected 3\n", fileName, replicaCount)
                 // Replicate the file to maintain three replicas
@@ -216,9 +217,6 @@ func performReplicaCheck() {
 func countReplicas(fileName string) int {
     count := 0
     current, ok := cassandra.Ring.Nodes[utils.Hash(cassandra.Domain+cassandra.MemberPort)] // Use a consistent ID
-    // fmt.Println("hello",utils.Hash(cassandra.Domain+cassandra.MemberPort))
-    // fmt.Println(cassandra.Ring.Nodes)
-    // fmt.Println("hello",current,ok)
     if !ok {
         fmt.Println("Error: Domain not found in ring nodes")
         return 0
@@ -228,7 +226,9 @@ func countReplicas(fileName string) int {
         if current == nil {
             break
         }
+        fmt.Println(current)
         if fileExistsOnNode(current, fileName) {
+            fmt.Println("count ++")
             count++
         }
         current = current.Successor
@@ -238,7 +238,7 @@ func countReplicas(fileName string) int {
 
 // Helper function to check if a file exists on a given node
 func fileExistsOnNode(node *cassandra.Node, fileName string) bool {
-    content, err := file.FetchFile(*node, fileName)
+    content, err := file.FetchFileReplica(*node, fileName)
     return err == nil && len(content) > 0
 }
 
