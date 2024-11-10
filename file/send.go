@@ -111,7 +111,7 @@ func getTargetServer(filename string) *cassandra.Node {
 }
 
 func FetchFileWithTimestamp(node cassandra.Node, filename string) ([]byte, int64, error) {
-	address := node.IP + cassandra.FilePort
+	address := node.IP + ":" + cassandra.FilePort
 	conn, err := net.Dial("tcp", address)
 	if err != nil {
 		return nil, 0, fmt.Errorf("connection error: %v", err)
@@ -140,8 +140,11 @@ func FetchFileWithTimestamp(node cassandra.Node, filename string) ([]byte, int64
 
 // Send a file to a node (for create and append)
 func SendFile(node cassandra.Node, filename string, content []byte) error {
-	address := node.IP + cassandra.FilePort
+	fmt.Println("-----------send_SendFile-------------")
+	address := node.IP + ":" + cassandra.FilePort
+	fmt.Println("address:",address)
 	conn, err := net.Dial("tcp", address)
+	fmt.Println("conn",conn)
 	if err != nil {
 		return fmt.Errorf("connection error: %v", err)
 	}
@@ -150,6 +153,7 @@ func SendFile(node cassandra.Node, filename string, content []byte) error {
 	// 构造并发送 CREATE 请求
 	fileSize := len(content)
 	message := fmt.Sprintf("CREATE %s\n%d\n%s", filename, fileSize, content)
+	fmt.Println("message",message)
 	_, err = conn.Write([]byte(message))
 	if err != nil {
 		return fmt.Errorf("error sending file: %v", err)
@@ -205,7 +209,7 @@ func FetchFile(node cassandra.Node, filename string) ([]byte, error) {
 
 // Send append content to a server
 func sendAppend(node cassandra.Node, filename string, content []byte) error {
-	address := node.IP + cassandra.FilePort
+	address := node.IP + ":" + cassandra.FilePort
 	conn, err := net.Dial("tcp", address)
 	if err != nil {
 		return fmt.Errorf("connection error: %v", err)
@@ -241,10 +245,10 @@ func Create(localFilename, hyDFSFilename string, continueAfterQuorum bool) error
 		return fmt.Errorf("error reading local file: %v", err)
 	}
 	server := getTargetServer(hyDFSFilename)
-
+	fmt.Println("server",server)
 	successCount := 0
 	servers := []*cassandra.Node{server, server.Successor, server.Successor.Successor}
-
+	fmt.Println(servers)
 	for _, srv := range servers {
 		if srv == nil {
 			continue

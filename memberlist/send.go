@@ -83,8 +83,8 @@ func send_ping(ip, port string, t float64) bool {
 		fmt.Println("Error sending ping:", err)
 		return false
 	}
-	currentTime := time.Now().Format("2006-01-02 15:04:05")
-	fmt.Println("Ping sent to", ip, currentTime)
+	//currentTime := time.Now().Format("2006-01-02 15:04:05")
+	//fmt.Println("Ping sent to", ip, currentTime)
 
 	// Set a read deadline for the response
 	conn.SetReadDeadline(time.Now().Add(time.Duration(t * float64(time.Second))))
