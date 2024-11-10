@@ -24,7 +24,7 @@ func ListenAndReply(port string) {
 	}
 	defer conn.Close()
 
-	buf := make([]byte, 1024)
+	buf := make([]byte, 8192)
 
 	for {
 		// Receive data

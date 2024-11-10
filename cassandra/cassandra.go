@@ -131,6 +131,11 @@ func (ring *ConsistentHashRing) RemoveNode(nodeID uint64) {
 	// 更新所有节点的前驱和后继
 	ring.UpdatePredecessorsAndSuccessors()
 	fmt.Printf("Node with ID %d removed from the ring.\n", nodeID)
+
+	// TODO: 更新文件
+	// 查找后继节点中哪些文件的后继属于自己的前驱到自己这一区间
+
+	// 像后继节点发起文件请求，把对应的文件保存到自己的hydfs中，
 }
 
 // ---------------------------Basic file operations---------------------

@@ -8,6 +8,8 @@ import (
 	"io/ioutil"
 	"mp3/cassandra"
 	"mp3/utils"
+	"sync"
+	"log"
 	// "net"
 )
 
@@ -255,30 +257,48 @@ func Merge() {
 }
 
 // multiappend 函数：提示用户输入文件名、虚拟机地址和本地文件名，并进行并发的追加操作
-func MultiAppend() {
-	fmt.Println("multiappend function called")
-	// reader := bufio.NewReader(os.Stdin)
+func MultiAppend(filename string, vmAddresses []string, localFilenames []string) error {
+	// 检查输入是否匹配
+	if len(vmAddresses) != len(localFilenames) {
+		return fmt.Errorf("number of VM addresses and local filenames must be the same")
+	}
 
-	// // 读取目标文件名
-	// fmt.Print("请输入目标文件名: ")
-	// filename, _ := reader.ReadString('\n')
-	// filename = strings.TrimSpace(filename)
+	// 创建等待组，用于等待所有并发操作完成
+	var wg sync.WaitGroup
 
-	// // 读取虚拟机地址
-	// fmt.Print("请输入虚拟机地址 (用空格隔开): ")
-	// vmInput, _ := reader.ReadString('\n')
-	// vmAddresses := strings.Fields(strings.TrimSpace(vmInput))
+	// 遍历虚拟机地址和对应的本地文件名
+	for i, addr := range vmAddresses {
+		localFilename := LocalDir+localFilenames[i]
+		fmt.Println("hello",localFilename)
 
-	// // 读取本地文件名
-	// fmt.Print("请输入本地文件名 (用空格隔开): ")
-	// fileInput, _ := reader.ReadString('\n')
-	// localFilenames := strings.Fields(strings.TrimSpace(fileInput))
+		// 读取本地文件内容
+		content, err := ioutil.ReadFile(localFilename)
+		if err != nil {
+			log.Printf("Error reading file %s: %v", localFilename, err)
+			continue
+		}
 
-	// // 检查虚拟机地址和本地文件名的数量是否匹配
-	// if len(vmAddresses) != len(localFilenames) {
-	//     fmt.Println("虚拟机地址与本地文件名数量不匹配。")
-	//     return
-	// }
+		// 创建节点信息
+		node := cassandra.Node{IP: addr} // 假设所有节点使用相同端口
 
-	// TODO：完成并发追加
+		// 增加等待组计数器
+		wg.Add(1)
+
+		filepath := filename
+		// 并发执行 append 操作
+		go func(n cassandra.Node, f string, c []byte) {
+			defer wg.Done()
+			err := sendAppend(n, f, c)
+			if err != nil {
+				fmt.Printf("Failed to append to %s on %s: %v\n", f, n.IP, err)
+			} else {
+				fmt.Printf("Successfully appended to %s on %s\n", f, n.IP)
+			}
+		}(node, filepath, content)
+	}
+
+	// 等待所有并发任务完成
+	wg.Wait()
+	fmt.Println("Multi-append operation completed.")
+	return nil
 }

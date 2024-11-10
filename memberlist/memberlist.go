@@ -114,40 +114,6 @@ func Join() {
     send(cassandra.Introducer, cassandra.MemberPort, message)
 }
 
-// func changeStatus(status, nodeIP, port, timestamp, initial string) {
-//     var nodeToMove cassandra.Node
-//     var found bool
-
-//     // 遍历 memberlist[initial]，找到匹配的节点
-//     aliveNodes := cassandra.Memberlist[initial]
-//     for i, node := range aliveNodes {
-//         // 匹配节点 IP 和端口
-//         if node.IP == nodeIP && node.Port == port && fmt.Sprint(node.Timestamp) == timestamp {
-//             // 找到节点
-//             nodeToMove = node
-
-//             // 从 initial 列表中删除节点
-//             cassandra.CountMutex.Lock()
-//             cassandra.Memberlist[initial] = append(aliveNodes[:i], aliveNodes[i+1:]...)
-//             cassandra.CountMutex.Unlock()
-
-//             found = true
-//             break
-//         }
-//     }
-
-//     // 如果找到节点，将其移动到目标状态列表
-//     if found {
-//         cassandra.CountMutex.Lock()
-//         cassandra.Memberlist[status] = append(cassandra.Memberlist[status], nodeToMove)
-//         cassandra.CountMutex.Unlock()
-
-//         List_mem_ids() // 调试用，打印当前 memberlist 的状态
-//         Write_to_log()
-//     } else {
-//         fmt.Printf("Node %s with port %s not found in alive\n", nodeIP, port)
-//     }
-// }
 func changeStatus(newStatus, nodeID string) {
     var nodeToMove cassandra.Node
     var found bool

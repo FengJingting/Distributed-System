@@ -19,7 +19,7 @@ func main() {
 	// 判断是否为 Introducer 节点
 	if cassandra.Introducer == cassandra.Domain {
 		fmt.Println("This node is the Introducer. Adding itself to the member list.")
-		memberlist.AddNode(cassandra.Domain, cassandra.MemberPort) // 调用 addNode 函数将自己添加到成员列表
+		memberlist.AddNode(cassandra.Domain, cassandra.MemberPort)// 调用 addNode 函数将自己添加到成员列表
 	}
 	// Start background processes
 	go memberlist.ListenAndReply(cassandra.MemberPort) //启动8080端口，监听各个vm发来的ping
@@ -75,8 +75,39 @@ func main() {
 			file.Append(fields[1], fields[2]) // 传递两个参数
 		// case "merge":
 		// 	merge()
-		// case "multiappend":
-		// 	multiappend()
+		case "multiappend":
+			if len(fields) < 4 {
+				fmt.Println("Usage: multiappend <filename> <vmAddresses> <localFilenames>")
+				continue
+			}
+
+			// filename 是第一个参数
+			filename := fields[1]
+			fmt.Println("filename:",filename)
+
+			// 将虚拟机地址和本地文件名转换为切片
+			vmAddresses := strings.Split(fields[2], ",")
+			fmt.Println("vmAddresses:",vmAddresses)
+			localFilenames := strings.Split(fields[3], ",")
+			fmt.Println("localFilenames:",localFilenames)
+
+			// 检查是否地址和文件名数量匹配
+			if len(vmAddresses) != len(localFilenames) {
+				fmt.Println("The number of VM addresses and local filenames must match.")
+				continue
+			}
+
+			// 调用 MultiAppend 函数
+			err := file.MultiAppend(filename, vmAddresses, localFilenames)
+			if err != nil {
+				fmt.Printf("MultiAppend failed: %v\n", err)
+			} else {
+				fmt.Println("Multi-append operation completed successfully.")
+			}
+			if len(fields) < 4 {
+				fmt.Println("Usage: multiappend <filename> <vmAddresses> <localFilenames>")
+				continue
+			}
 		// display operation
 		case "is":
 			file.Is()
@@ -84,6 +115,7 @@ func main() {
 			file.Store()
 		case "getfromreplica":
 			file.Getfromreplica()
+
 		default:
 			fmt.Println("Unknown command")
 		}
