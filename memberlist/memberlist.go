@@ -145,7 +145,9 @@ func changeStatus(newStatus, nodeID string) {
     // 在 `Memberlist` 中找到节点的当前状态并记录其状态
     for status, nodes := range cassandra.Memberlist {
         for i, node := range nodes {
+            fmt.Println("find node")
             if fmt.Sprint(node.ID) == nodeID {
+                fmt.Println("get it")
                 nodeToMove = node
 
                 // 从当前状态列表中删除节点
@@ -168,6 +170,7 @@ func changeStatus(newStatus, nodeID string) {
         cassandra.Ring.RemoveNode(nodeToMove.ID) // 假设 `RemoveNode` 方法已在 `Ring` 中实现
 
         // 如果newStatus是failed，则进行副本检查
+        // fmt.Println("hello",newStatus)
         if newStatus == "failed" {
             performReplicaCheck()
         }
@@ -207,12 +210,15 @@ func performReplicaCheck() {
 
 func countReplicas(fileName string) int {
     count := 0
-    current, ok := cassandra.Ring.Nodes[utils.Hash(cassandra.Domain+cassandra.MemberPort)%file.RingLength] // Use a consistent ID
+    current, ok := cassandra.Ring.Nodes[utils.Hash(cassandra.Domain+cassandra.MemberPort)] // Use a consistent ID
+    // fmt.Println("hello",utils.Hash(cassandra.Domain+cassandra.MemberPort))
+    // fmt.Println(cassandra.Ring.Nodes)
+    // fmt.Println("hello",current,ok)
     if !ok {
         fmt.Println("Error: Domain not found in ring nodes")
         return 0
     }
-
+    fmt.Println("Domain found",current)
     for i := 0; i < 3; i++ {
         if current == nil {
             break
@@ -238,7 +244,7 @@ func replicateFileToSuccessors(fileName string, replicasNeeded int) {
         return
     }
 
-    current, ok := cassandra.Ring.Nodes[utils.Hash(cassandra.Domain)%file.RingLength]
+    current, ok := cassandra.Ring.Nodes[utils.Hash(cassandra.Domain+cassandra.MemberPort)]
     if !ok {
         fmt.Println("Error: Domain not found in ring nodes")
         return
