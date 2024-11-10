@@ -77,7 +77,7 @@ func getTargetServer(filename string) *cassandra.Node {
 	hashValue := utils.Hash(filename)
 	// control region of hash value
 	hashValue = hashValue % RingLength
-	fmt.Println(hashValue)
+	// fmt.Println(hashValue)
 	// find
 	for _, node := range cassandra.Memberlist["alive"] {
 		if len(cassandra.Memberlist["alive"]) == 1 {
@@ -112,6 +112,7 @@ func sendFile(node cassandra.Node, filename string, content []byte) error {
 func fetchFile(node cassandra.Node, filename string) ([]byte, error) {
 	//_________________________cache__________________________________
 	// Check if the file is already in cache
+	// PrintCacheContents()
     if content, found := fileCache.Get(filename); found {
         fmt.Println("File found in cache")
         return content.([]byte), nil
@@ -136,6 +137,11 @@ func fetchFile(node cassandra.Node, filename string) ([]byte, error) {
 	}
 
 	response, err := ioutil.ReadAll(conn)
+	//__________________________add to cache________________________________
+    // Add fetched file content to cache
+    fileCache.Add(filename, response)
+    fmt.Println("File added to cache:", filename)
+    //__________________________end add to cache____________________________
 	return response, err
 }
 
