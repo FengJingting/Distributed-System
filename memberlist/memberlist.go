@@ -204,7 +204,10 @@ func performReplicaCheck() {
             if replicaCount < 3 {
                 fmt.Printf("Insufficient replicas for file %s: found %d replicas, expected 3\n", fileName, replicaCount)
                 // Replicate the file to maintain three replicas
+                startTime := time.Now()
                 replicateFileToSuccessors(fileName, 3-replicaCount)
+                duration := time.Since(startTime)
+                fmt.Printf("Time taken to replicate file %s: %v\n", fileName, duration)
             }
         }
     }
