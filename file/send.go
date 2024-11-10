@@ -74,21 +74,30 @@ func RemoveNode(nodeID uint64) {
 // ----------------Helper functions------------------
 // Find target node based on consistent hashing
 func getTargetServer(filename string) *cassandra.Node {
-	hashValue := utils.Hash(filename)
-	// control region of hash value
-	hashValue = hashValue % RingLength
-	// fmt.Println(hashValue)
-	// find
-	for _, node := range cassandra.Memberlist["alive"] {
-		if len(cassandra.Memberlist["alive"]) == 1 {
-			return &node
-		}
-		if node.Predecessor != nil && uint64(node.Predecessor.ID) < hashValue && uint64(node.ID) > hashValue {
-			return &node
-		}
-	}
-	return nil
+    hashValue := utils.Hash(filename) % RingLength
+
+    // List of nodes sorted by their ID (hashes in the ring)
+    nodes := cassandra.Memberlist["alive"]
+
+    // Check if only one node is alive, in which case it handles all requests
+    if len(nodes) == 1 {
+        return &nodes[0]
+    }
+
+    for _, node := range nodes {
+        // Case 1: Normal range where hash falls between predecessor and current node
+        if node.Predecessor != nil && 
+            ((uint64(node.Predecessor.ID) < hashValue && uint64(node.ID) >= hashValue) || 
+             (uint64(node.Predecessor.ID) > uint64(node.ID) && (hashValue >= uint64(node.Predecessor.ID) || hashValue < uint64(node.ID)))) {
+            return &node
+        }
+    }
+
+    // Wraparound case: If hash does not fit between any predecessors and IDs,
+    // it belongs to the first node in the sorted list
+    return &nodes[0]
 }
+
 
 // Send a file to a node (for create and append)
 func sendFile(node cassandra.Node, filename string, content []byte) error {
