@@ -207,7 +207,7 @@ func performReplicaCheck() {
 
 func countReplicas(fileName string) int {
     count := 0
-    current, ok := cassandra.Ring.Nodes[utils.Hash(cassandra.Domain)%file.RingLength] // Use a consistent ID
+    current, ok := cassandra.Ring.Nodes[utils.Hash(cassandra.Domain+cassandra.MemberPort)%file.RingLength] // Use a consistent ID
     if !ok {
         fmt.Println("Error: Domain not found in ring nodes")
         return 0
