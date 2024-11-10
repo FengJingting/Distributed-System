@@ -41,7 +41,6 @@ func ListenAndReply(port string) {
 
 		// Handle different message types
 		if len(messageParts) == 1 && messageParts[0] == "ping" {
-			// Set packet loss rate
 			// If the array length is 1 and the first element is "ping", return "ack"
 			_, err = conn.WriteToUDP([]byte("ack"), remoteAddr)
 			if err != nil {
@@ -53,13 +52,6 @@ func ListenAndReply(port string) {
 		} else if len(messageParts) == 2 && messageParts[0] == "failed" {
 			// Handle failed node
 			fmt.Printf("Node failed\n")
-			// changeStatus(messageParts[0], messageParts[1], messageParts[2], messageParts[3], "alive")
-			// // Reply
-			// _, err = conn.WriteToUDP([]byte("received"), remoteAddr)
-			// if err != nil {
-			// 	fmt.Println("Error sending ack:", err)
-			// 	continue
-			// }
 			// 获取失败节点的 IP 和端口
 			failedID := messageParts[1]
 			// 向发送方确认接收到了 "failed" 消息
@@ -72,12 +64,7 @@ func ListenAndReply(port string) {
 			// 查找并移除失败节点
 			cassandra.CountMutex.Lock()
 			defer cassandra.CountMutex.Unlock()
-			
-			
 			changeStatus("failed", failedID)
-		
-			
-
 		} else if len(messageParts) == 2 && messageParts[0] == "join" {
 			fmt.Printf("Node Added\n")
 			// 解析消息并调用 addNode 函数添加节点
@@ -134,9 +121,6 @@ func ListenAndReply(port string) {
 				 node := cassandra.Ring.Nodes[hash]
 				 fmt.Printf("Node ID=%d, IP=%s, Port=%s\n", node.ID, node.IP, node.Port)
 			 }
-		 
-			 
-
 		} else {
 			fmt.Println(len(messageParts))
 		}

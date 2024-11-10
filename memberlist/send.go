@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net"
 	"time"
-	// "mp3/utils"
 	"mp3/cassandra"
 )
 
@@ -125,7 +124,7 @@ func send(ip string, port string, message string) {
 	}
 
 	// Only attempt to read response once to avoid blocking
-	buffer := make([]byte, 1024)
+	buffer := make([]byte, 8192)
 	//conn.SetReadDeadline(time.Now().Add(2 * time.Second))  // Set a short timeout
 	n, remoteAddr, err := conn.ReadFromUDP(buffer)
 	if err != nil {
@@ -146,7 +145,7 @@ func send_update(content string, status string, selfIP string) {
 		if serverIP == selfIP {
 			continue
 		}
-		port := node.Port
+		port := cassandra.MemberPort
 		send(serverIP, port, message)
 	}
 }
