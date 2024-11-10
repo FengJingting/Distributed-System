@@ -54,7 +54,7 @@ func lsHyDFSfilename(filename string) []string {
 
         serverAddr := server.IP
         serverID := fmt.Sprintf("%d", server.ID)
-        content, err := fetchFile(*server, filename)
+        content, err := FetchFile(*server, filename)
         if err == nil && content != nil {
             result = append(result, fmt.Sprintf("VM Address: %s, VM ID: %s", serverAddr, serverID))
         } else {
@@ -141,7 +141,7 @@ func Getfromreplica() {
     }
 
     // Fetch the file from the server
-    content, err := fetchFile(*server, hyDFSfilename)
+    content, err := FetchFile(*server, hyDFSfilename)
     if err != nil {
         fmt.Printf("Error fetching file: %v\n", err)
         return

@@ -102,10 +102,10 @@ func getTargetServer(filename string) *cassandra.Node {
 
 
 // Send a file to a node (for create and append)
-func sendFile(node cassandra.Node, filename string, content []byte) error {
-	fmt.Println("---------send_sendFile-----------")
+func SendFile(node cassandra.Node, filename string, content []byte) error {
+	fmt.Println("---------send_SendFile-----------")
 	address := string(node.IP) + ":" + cassandra.FilePort //":9090"
-	fmt.Println("sendFile_address: ", address)
+	fmt.Println("SendFile_address: ", address)
 	conn, err := net.Dial("tcp", address)
 	fmt.Println("conn:", conn)
 	if err != nil {
@@ -120,7 +120,7 @@ func sendFile(node cassandra.Node, filename string, content []byte) error {
 }
 
 // Fetch a file from a server
-func fetchFile(node cassandra.Node, filename string) ([]byte, error) {
+func FetchFile(node cassandra.Node, filename string) ([]byte, error) {
 	//_________________________cache__________________________________
 	// Check if the file is already in cache
 	// PrintCacheContents()
@@ -185,20 +185,38 @@ func Create(localFilename, hyDFSFilename string) error {
 	}
 	server := getTargetServer(hyDFSFilename)
 	fmt.Println("server: ", server)
-	send1 := sendFile(*server, hyDFSFilename, content)
-	fmt.Println("send1")
-	if send1 != nil {
-		return fmt.Errorf("sendFile errors: send1: %v", send1)
-	} else {
-		return nil
+	//send with replica(max3)
+	if len(cassandra.Memberlist["alive"])==1{
+		send1 := SendFile(*server, hyDFSFilename, content)
+		fmt.Println("send1")
+		if send1 != nil {
+			return fmt.Errorf("SendFile errors: send1: %v", send1)
+		} else {
+			return nil
+		}
+	}else if len(cassandra.Memberlist["alive"])==2{
+		send1 := SendFile(*server, hyDFSFilename, content)
+		fmt.Println("send1")
+		send2 := SendFile(*server.Successor, hyDFSFilename, content)
+		fmt.Println("send2")
+		if send1 != nil || send2 != nil {
+			return fmt.Errorf("SendFile errors: send1: %v, send2: %v", send1, send2)
+		} else {
+			return nil
+		}
+	}else{
+		send1 := SendFile(*server, hyDFSFilename, content)
+		fmt.Println("send1")
+		send2 := SendFile(*server.Successor, hyDFSFilename, content)
+		fmt.Println("send2")
+		send3 := SendFile(*server.Successor.Successor, hyDFSFilename, content)
+		fmt.Println("send3")
+		if send1 != nil || send2 != nil || send3 != nil {
+			return fmt.Errorf("SendFile errors: send1: %v, send2: %v, send3: %v", send1, send2, send3)
+		} else {
+			return nil
+		}
 	}
-	// send2 := sendFile(*server.Successor, hyDFSFilename, content)
-	// send3 := sendFile(*server.Successor.Successor, hyDFSFilename, content)
-	// if send1 != nil || send2 != nil || send3 != nil {
-	// 	return fmt.Errorf("sendFile errors: send1: %v, send2: %v, send3: %v", send1, send2, send3)
-	// } else {
-	// 	return nil
-	// }
 }
 
 // Get (fetch)
@@ -208,7 +226,7 @@ func Get(hyDFSFilename, localFilename string) error {
 	fmt.Println("hyDFSFilepath:", hyDFSFilepath)
 	server := getTargetServer(hyDFSFilepath)
 	fmt.Println("server:", server)
-	content, err := fetchFile(*server, hyDFSFilename)
+	content, err := FetchFile(*server, hyDFSFilename)
 	fmt.Println("content:", content)
 	if err != nil {
 		return fmt.Errorf("error fetching file: %v", err)
@@ -231,14 +249,14 @@ func Append(localFilename, hyDFSFilename string) error {
 	append1 := sendAppend(*server, hyDFSFilename, content)
 	fmt.Println("append1")
 	if append1 != nil {
-		return fmt.Errorf("sendFile errors: append1: %v", append1)
+		return fmt.Errorf("SendFile errors: append1: %v", append1)
 	} else {
 		return nil
 	}
 	// append2 := sendAppend(*server.Successor, hyDFSFilename, content)
 	// append3 := sendAppend(*server.Successor.Successor, hyDFSFilename, content)
 	// if append1 != nil || append2 != nil || append3 != nil {
-	// 	return fmt.Errorf("sendFile errors: append1: %v, append2: %v, append3: %v", append1, append2, append3)
+	// 	return fmt.Errorf("SendFile errors: append1: %v, append2: %v, append3: %v", append1, append2, append3)
 	// } else {
 	// 	return nil
 	// }

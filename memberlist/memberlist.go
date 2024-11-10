@@ -3,8 +3,10 @@ package memberlist
 import (
     "fmt"
     // "strings"
-    // "mp3/utils"
+    "mp3/utils"
+    "io/ioutil"
 	"mp3/cassandra"
+    "mp3/file"
 	"strconv"
 	"os"
 	"time"
@@ -147,11 +149,95 @@ func changeStatus(newStatus, nodeID string) {
         // 从一致性哈希环中删除节点
         cassandra.Ring.RemoveNode(nodeToMove.ID) // 假设 `RemoveNode` 方法已在 `Ring` 中实现
 
+        // 如果newStatus是failed，则进行副本检查
+        if newStatus == "failed" {
+            performReplicaCheck()
+        }
+
         // 打印更新后的 `Memberlist` 以供调试
         List_mem_ids() // 调试用，打印当前 `Memberlist` 的状态
         // Write_to_log() // 将更新后的信息写入日志
+        // TODO: 如果newStatus是failed的话，调用自我检查函数，检查对于自己的所有文件，是否从自己的开始的后继中replica的数量是否正确（是否一共加起来为三份）
+
     } else {
         fmt.Printf("Node with ID %s not found in current memberlist.\n", nodeID)
+    }
+}
+
+func performReplicaCheck() {
+    fmt.Println("Performing replica check on successor nodes...")
+
+    // List files from DfsDir and perform the replica check on each file
+    files, err := ioutil.ReadDir(file.DfsDir)
+    if err != nil {
+        fmt.Println("Error reading directory:", err)
+        return
+    }
+
+    for _, fileEntry := range files {
+        if !fileEntry.IsDir() { // Only process files
+            fileName := fileEntry.Name()
+            replicaCount := countReplicas(fileName)
+            if replicaCount < 3 {
+                fmt.Printf("Insufficient replicas for file %s: found %d replicas, expected 3\n", fileName, replicaCount)
+                // Replicate the file to maintain three replicas
+                replicateFileToSuccessors(fileName, 3-replicaCount)
+            }
+        }
+    }
+}
+
+func countReplicas(fileName string) int {
+    count := 0
+    current, ok := cassandra.Ring.Nodes[utils.Hash(cassandra.Domain)%file.RingLength] // Use a consistent ID
+    if !ok {
+        fmt.Println("Error: Domain not found in ring nodes")
+        return 0
+    }
+
+    for i := 0; i < 3; i++ {
+        if current == nil {
+            break
+        }
+        if fileExistsOnNode(current, fileName) {
+            count++
+        }
+        current = current.Successor
+    }
+    return count
+}
+
+// Helper function to check if a file exists on a given node
+func fileExistsOnNode(node *cassandra.Node, fileName string) bool {
+    content, err := file.FetchFile(*node, fileName)
+    return err == nil && len(content) > 0
+}
+
+func replicateFileToSuccessors(fileName string, replicasNeeded int) {
+    content, err := ioutil.ReadFile(file.DfsDir + fileName)
+    if err != nil {
+        fmt.Println("Error reading local file:", err)
+        return
+    }
+
+    current, ok := cassandra.Ring.Nodes[utils.Hash(cassandra.Domain)%file.RingLength]
+    if !ok {
+        fmt.Println("Error: Domain not found in ring nodes")
+        return
+    }
+    current = current.Successor
+
+    for replicasNeeded > 0 && current != nil {
+        if !fileExistsOnNode(current, fileName) {
+            err := file.SendFile(*current, fileName, content)
+            if err != nil {
+                fmt.Println("Error replicating file to node:", current.ID, err)
+            } else {
+                replicasNeeded--
+                fmt.Printf("File %s replicated to node %d\n", fileName, current.ID)
+            }
+        }
+        current = current.Successor
     }
 }
 
