@@ -1,15 +1,21 @@
 package file
+
 //_________________________cache__________________________________
 import (
 	"fmt"
 	"net"
-	"github.com/hashicorp/golang-lru" // LRU Cache library
+
+	lru "github.com/hashicorp/golang-lru" // LRU Cache library
+
 	//"time"
+	"bufio"
 	"io/ioutil"
+	"log"
 	"mp3/cassandra"
 	"mp3/utils"
+	"strconv"
+	"strings"
 	"sync"
-	"log"
 	// "net"
 )
 
@@ -19,34 +25,38 @@ const (
 	DfsDir            = "./files/hydfs/"
 	LocalDir          = "./files/local/"
 	CacheSize         = 100 // Set the cache size
+	N                 = 3   // 总副本数
+	W                 = 2   // 写 Quorum
+	R                 = 2   // 读 Quorum
 )
 
 // Cache for storing file contents
 var fileCache *lru.Cache
+
 func Init() {
-    // Initialize the LRU cache with the specified size
-    cache, err := lru.New(CacheSize)
-    if err != nil {
-        fmt.Println("Error initializing LRU cache:", err)
-        return
-    }
-    fileCache = cache
+	// Initialize the LRU cache with the specified size
+	cache, err := lru.New(CacheSize)
+	if err != nil {
+		fmt.Println("Error initializing LRU cache:", err)
+		return
+	}
+	fileCache = cache
 }
 
 // Function to print contents of the cache
 func PrintCacheContents() {
-    fmt.Println("Cache contents:")
+	fmt.Println("Cache contents:")
 
-    // Get keys and print each key-value pair in the cache
-    for _, key := range fileCache.Keys() {
-        if value, found := fileCache.Get(key); found {
-            fmt.Printf("Key: %v, Value: %v\n", key, value)
-        }
-    }
-    fmt.Println("End of cache contents.")
+	// Get keys and print each key-value pair in the cache
+	for _, key := range fileCache.Keys() {
+		if value, found := fileCache.Get(key); found {
+			fmt.Printf("Key: %v, Value: %v\n", key, value)
+		}
+	}
+	fmt.Println("End of cache contents.")
 }
 
-//___________________________cache________________________________
+// ___________________________cache________________________________
 // ----------------------node---------------------
 // Node operator
 func AddNode(node cassandra.Node) {
@@ -76,47 +86,84 @@ func RemoveNode(nodeID uint64) {
 // ----------------Helper functions------------------
 // Find target node based on consistent hashing
 func getTargetServer(filename string) *cassandra.Node {
-    hashValue := utils.Hash(filename) % RingLength
+	hashValue := utils.Hash(filename) % RingLength
 
-    // List of nodes sorted by their ID (hashes in the ring)
-    nodes := cassandra.Memberlist["alive"]
+	// List of nodes sorted by their ID (hashes in the ring)
+	nodes := cassandra.Memberlist["alive"]
 
-    // Check if only one node is alive, in which case it handles all requests
-    if len(nodes) == 1 {
-        return &nodes[0]
-    }
+	// Check if only one node is alive, in which case it handles all requests
+	if len(nodes) == 1 {
+		return &nodes[0]
+	}
 
-    for _, node := range nodes {
-        // Case 1: Normal range where hash falls between predecessor and current node
-        if node.Predecessor != nil && 
-            ((uint64(node.Predecessor.ID) < hashValue && uint64(node.ID) >= hashValue) || 
-             (uint64(node.Predecessor.ID) > uint64(node.ID) && (hashValue >= uint64(node.Predecessor.ID) || hashValue < uint64(node.ID)))) {
+	for _, node := range nodes {
+		// Case 1: Normal range where hash falls between predecessor and current node
+		if node.Predecessor != nil &&
+			((uint64(node.Predecessor.ID) < hashValue && uint64(node.ID) >= hashValue) ||
+				(uint64(node.Predecessor.ID) > uint64(node.ID) && (hashValue >= uint64(node.Predecessor.ID) || hashValue < uint64(node.ID)))) {
 			return cassandra.Ring.Nodes[node.ID]
-        }
-    }
+		}
+	}
 
-    // Wraparound case: If hash does not fit between any predecessors and IDs,
-    // it belongs to the first node in the sorted list
-    return cassandra.Ring.Nodes[nodes[0].ID]
+	// Wraparound case: If hash does not fit between any predecessors and IDs,
+	// it belongs to the first node in the sorted list
+	return cassandra.Ring.Nodes[nodes[0].ID]
 }
 
+func FetchFileWithTimestamp(node cassandra.Node, filename string) ([]byte, int64, error) {
+	address := node.IP + cassandra.FilePort
+	conn, err := net.Dial("tcp", address)
+	if err != nil {
+		return nil, 0, fmt.Errorf("connection error: %v", err)
+	}
+	defer conn.Close()
+
+	// 发送 GET 请求
+	message := fmt.Sprintf("GET %s", filename)
+	_, err = conn.Write([]byte(message + "\n"))
+	if err != nil {
+		return nil, 0, fmt.Errorf("error sending request: %v", err)
+	}
+
+	// 接收内容和时间戳
+	reader := bufio.NewReader(conn)
+	timestampStr, err := reader.ReadString('\n')
+	if err != nil {
+		return nil, 0, fmt.Errorf("error reading timestamp: %v", err)
+	}
+	timestampStr = strings.TrimSpace(timestampStr)
+	timestamp, _ := strconv.ParseInt(timestampStr, 10, 64)
+
+	content, err := ioutil.ReadAll(reader)
+	return content, timestamp, err
+}
 
 // Send a file to a node (for create and append)
 func SendFile(node cassandra.Node, filename string, content []byte) error {
-	fmt.Println("---------send_SendFile-----------")
-	address := string(node.IP) + ":" + cassandra.FilePort //":9090"
-	fmt.Println("SendFile_address: ", address)
+	address := node.IP + cassandra.FilePort
 	conn, err := net.Dial("tcp", address)
-	fmt.Println("conn:", conn)
 	if err != nil {
-		return fmt.Errorf("connection error: %s, %v", address, err)
+		return fmt.Errorf("connection error: %v", err)
 	}
 	defer conn.Close()
+
+	// 构造并发送 CREATE 请求
 	fileSize := len(content)
 	message := fmt.Sprintf("CREATE %s\n%d\n%s", filename, fileSize, content)
-	fmt.Println("message: ", message)
 	_, err = conn.Write([]byte(message))
-	return err
+	if err != nil {
+		return fmt.Errorf("error sending file: %v", err)
+	}
+
+	// 读取确认消息
+	reader := bufio.NewReader(conn)
+	ack, err := reader.ReadString('\n')
+	if err != nil || strings.TrimSpace(ack) != "OK" {
+		return fmt.Errorf("error confirming file creation on %s: %v", address, err)
+	}
+
+	fmt.Printf("File %s created successfully on %s\n", filename, address)
+	return nil
 }
 
 // Fetch a file from a server
@@ -124,12 +171,12 @@ func FetchFile(node cassandra.Node, filename string) ([]byte, error) {
 	//_________________________cache__________________________________
 	// Check if the file is already in cache
 	// PrintCacheContents()
-    if content, found := fileCache.Get(filename); found {
-        fmt.Println("File found in cache")
-        return content.([]byte), nil
-    }
+	if content, found := fileCache.Get(filename); found {
+		fmt.Println("File found in cache")
+		return content.([]byte), nil
+	}
 	//___________________________cache________________________________
-	address := string(node.IP) + ":" + cassandra.FilePort //":9090" 
+	address := string(node.IP) + ":" + cassandra.FilePort //":9090"
 	fmt.Println("address:", address)
 	conn, err := net.Dial("tcp", address)
 	fmt.Println("conn:", conn)
@@ -149,126 +196,198 @@ func FetchFile(node cassandra.Node, filename string) ([]byte, error) {
 
 	response, err := ioutil.ReadAll(conn)
 	//__________________________add to cache________________________________
-    // Add fetched file content to cache
-    fileCache.Add(filename, response)
-    fmt.Println("File added to cache:", filename)
-    //__________________________end add to cache____________________________
+	// Add fetched file content to cache
+	fileCache.Add(filename, response)
+	fmt.Println("File added to cache:", filename)
+	//__________________________end add to cache____________________________
 	return response, err
 }
 
 // Send append content to a server
 func sendAppend(node cassandra.Node, filename string, content []byte) error {
-	address := string(node.IP) + ":" + cassandra.FilePort //":9090"
+	address := node.IP + cassandra.FilePort
 	conn, err := net.Dial("tcp", address)
 	if err != nil {
 		return fmt.Errorf("connection error: %v", err)
 	}
 	defer conn.Close()
 
-	// Protocol: "APPEND filename content"
+	// 构造并发送 APPEND 请求
 	fileSize := len(content)
 	message := fmt.Sprintf("APPEND %s\n%d\n%s", filename, fileSize, content)
 	_, err = conn.Write([]byte(message))
-	return err
+	if err != nil {
+		return fmt.Errorf("error sending append request: %v", err)
+	}
+
+	// 读取确认消息
+	reader := bufio.NewReader(conn)
+	ack, err := reader.ReadString('\n')
+	if err != nil || strings.TrimSpace(ack) != "OK" {
+		return fmt.Errorf("error confirming append on %s: %v", address, err)
+	}
+
+	fmt.Printf("Content appended to file %s on %s successfully\n", filename, address)
+	return nil
 }
 
 // ---------------------------Basic file operations---------------------
 // Create
-func Create(localFilename, hyDFSFilename string) error {
+func Create(localFilename, hyDFSFilename string, continueAfterQuorum bool) error {
 	fmt.Println("------------send_create-------------")
 	localFilepath := LocalDir + localFilename
-	fmt.Println("localFilepath: ", localFilepath)
 	content, err := ioutil.ReadFile(localFilepath)
-	fmt.Println("content: ", content)
 	if err != nil {
 		return fmt.Errorf("error reading local file: %v", err)
 	}
 	server := getTargetServer(hyDFSFilename)
-	fmt.Println("server: ", server)
-	//send with replica(max3)
-	if len(cassandra.Memberlist["alive"])==1{
-		send1 := SendFile(*server, hyDFSFilename, content)
-		fmt.Println("send1")
-		if send1 != nil {
-			return fmt.Errorf("SendFile errors: send1: %v", send1)
-		} else {
-			return nil
+
+	successCount := 0
+	servers := []*cassandra.Node{server, server.Successor, server.Successor.Successor}
+
+	for _, srv := range servers {
+		if srv == nil {
+			continue
 		}
-	}else if len(cassandra.Memberlist["alive"])==2{
-		send1 := SendFile(*server, hyDFSFilename, content)
-		fmt.Println("send1")
-		send2 := SendFile(*server.Successor, hyDFSFilename, content)
-		fmt.Println("send2")
-		if send1 != nil || send2 != nil {
-			return fmt.Errorf("SendFile errors: send1: %v, send2: %v", send1, send2)
-		} else {
-			return nil
+		if err := SendFile(*srv, hyDFSFilename, content); err == nil {
+			successCount++
 		}
-	}else{
-		fmt.Printf("Self: ID=%d, IP=%s, Port=%s\n", server.ID, server.IP, server.Port,)
-		if server.Successor != nil {
-			fmt.Printf("Successor: ID=%d, IP=%s, Port=%s\n", server.Successor.ID, server.Successor.IP, server.Successor.Port)
-		} else {
-			fmt.Println("Successor: None")
-		}
-		send1 := SendFile(*server, hyDFSFilename, content)
-		fmt.Println("send1")
-		fmt.Printf("First Successor: ID=%d, IP=%s, Port=%s\n", server.Successor.ID, server.Successor.IP, server.Successor.Port)
-		send2 := SendFile(*server.Successor, hyDFSFilename, content)
-		fmt.Println("send2")
-		
-		send3 := SendFile(*server.Successor.Successor, hyDFSFilename, content)
-		fmt.Println("send3")
-		if send1 != nil || send2 != nil || send3 != nil {
-			return fmt.Errorf("SendFile errors: send1: %v, send2: %v, send3: %v", send1, send2, send3)
-		} else {
+
+		// 如果达到 Quorum，且不需要继续写入剩余副本，则退出循环
+		if successCount >= W && !continueAfterQuorum {
+			fmt.Println("Write quorum reached")
 			return nil
 		}
 	}
+
+	if successCount >= W {
+		fmt.Println("Write quorum reached after writing all nodes")
+		return nil
+	}
+	return fmt.Errorf("write quorum not reached, only %d nodes succeeded", successCount)
 }
+
+// func Create(localFilename, hyDFSFilename string) error {
+// 	fmt.Println("------------send_create-------------")
+// 	localFilepath := LocalDir + localFilename
+// 	content, err := ioutil.ReadFile(localFilepath)
+// 	if err != nil {
+// 		return fmt.Errorf("error reading local file: %v", err)
+// 	}
+// 	server := getTargetServer(hyDFSFilename)
+
+// 	successCount := 0
+// 	servers := []*cassandra.Node{server, server.Successor, server.Successor.Successor}
+
+// 	for _, srv := range servers {
+// 		if srv == nil {
+// 			continue
+// 		}
+// 		if err := SendFile(*srv, hyDFSFilename, content); err == nil {
+// 			successCount++
+// 		}
+// 		if successCount >= W {
+// 			fmt.Println("Write quorum reached")
+// 			return nil
+// 		}
+// 	}
+// 	return fmt.Errorf("write quorum not reached, only %d nodes succeeded", successCount)
+// }
 
 // Get (fetch)
 func Get(hyDFSFilename, localFilename string) error {
 	fmt.Println("------------send_get-------------")
-	hyDFSFilepath := DfsDir + hyDFSFilename
-	fmt.Println("hyDFSFilepath:", hyDFSFilepath)
-	server := getTargetServer(hyDFSFilepath)
-	fmt.Println("server:", server)
-	content, err := FetchFile(*server, hyDFSFilename)
-	fmt.Println("content:", content)
-	if err != nil {
-		return fmt.Errorf("error fetching file: %v", err)
+	server := getTargetServer(hyDFSFilename)
+
+	var latestContent []byte
+	var latestTimestamp int64
+	successCount := 0
+
+	servers := []*cassandra.Node{server, server.Successor, server.Successor.Successor}
+
+	for _, srv := range servers {
+		if srv == nil {
+			continue
+		}
+		content, timestamp, err := FetchFileWithTimestamp(*srv, hyDFSFilename)
+		if err == nil {
+			successCount++
+			if timestamp > latestTimestamp {
+				latestContent = content
+				latestTimestamp = timestamp
+			}
+		}
+		if successCount >= R {
+			fmt.Println("Read quorum reached")
+			localFilepath := LocalDir + localFilename
+			return ioutil.WriteFile(localFilepath, latestContent, 0644)
+		}
 	}
-	localFilepath := LocalDir + localFilename
-	fmt.Println("localFilepath:", localFilepath)
-	return ioutil.WriteFile(localFilepath, content, 0644)
+	return fmt.Errorf("read quorum not reached, only %d nodes succeeded", successCount)
 }
 
 // Append
-func Append(localFilename, hyDFSFilename string) error {
+func Append(localFilename, hyDFSFilename string, continueAfterQuorum bool) error {
 	fmt.Println("------------send_append-------------")
 	localFilepath := LocalDir + localFilename
-	fmt.Println("localFilepath:", localFilepath)
 	content, err := ioutil.ReadFile(localFilepath)
 	if err != nil {
 		return fmt.Errorf("error reading local file: %v", err)
 	}
 	server := getTargetServer(hyDFSFilename)
-	append1 := sendAppend(*server, hyDFSFilename, content)
-	fmt.Println("append1")
-	if append1 != nil {
-		return fmt.Errorf("SendFile errors: append1: %v", append1)
-	} else {
+
+	successCount := 0
+	servers := []*cassandra.Node{server, server.Successor, server.Successor.Successor}
+
+	for _, srv := range servers {
+		if srv == nil {
+			continue
+		}
+		if err := sendAppend(*srv, hyDFSFilename, content); err == nil {
+			successCount++
+		}
+
+		// 如果达到 Quorum 且不需要继续写入剩余副本，则退出循环
+		if successCount >= W && !continueAfterQuorum {
+			fmt.Println("Append quorum reached")
+			return nil
+		}
+	}
+
+	// 确认 Quorum 达成或写入完成
+	if successCount >= W {
+		fmt.Println("Append quorum reached after writing all nodes")
 		return nil
 	}
-	// append2 := sendAppend(*server.Successor, hyDFSFilename, content)
-	// append3 := sendAppend(*server.Successor.Successor, hyDFSFilename, content)
-	// if append1 != nil || append2 != nil || append3 != nil {
-	// 	return fmt.Errorf("SendFile errors: append1: %v, append2: %v, append3: %v", append1, append2, append3)
-	// } else {
-	// 	return nil
-	// }
+	return fmt.Errorf("append quorum not reached, only %d nodes succeeded", successCount)
 }
+
+// func Append(localFilename, hyDFSFilename string) error {
+// 	fmt.Println("------------send_append-------------")
+// 	localFilepath := LocalDir + localFilename
+// 	content, err := ioutil.ReadFile(localFilepath)
+// 	if err != nil {
+// 		return fmt.Errorf("error reading local file: %v", err)
+// 	}
+// 	server := getTargetServer(hyDFSFilename)
+
+// 	successCount := 0
+// 	servers := []*cassandra.Node{server, server.Successor, server.Successor.Successor}
+
+// 	for _, srv := range servers {
+// 		if srv == nil {
+// 			continue
+// 		}
+// 		if err := sendAppend(*srv, hyDFSFilename, content); err == nil {
+// 			successCount++
+// 		}
+// 		if successCount >= W {
+// 			fmt.Println("Write quorum reached")
+// 			return nil
+// 		}
+// 	}
+// 	return fmt.Errorf("write quorum not reached, only %d nodes succeeded", successCount)
+// }
 
 func Merge() {
 	fmt.Println("------------send_merge-------------")
@@ -294,8 +413,8 @@ func MultiAppend(filename string, vmAddresses []string, localFilenames []string)
 
 	// 遍历虚拟机地址和对应的本地文件名
 	for i, addr := range vmAddresses {
-		localFilename := LocalDir+localFilenames[i]
-		fmt.Println("hello",localFilename)
+		localFilename := LocalDir + localFilenames[i]
+		fmt.Println("hello", localFilename)
 
 		// 读取本地文件内容
 		content, err := ioutil.ReadFile(localFilename)

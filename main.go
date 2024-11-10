@@ -19,7 +19,7 @@ func main() {
 	// 判断是否为 Introducer 节点
 	if cassandra.Introducer == cassandra.Domain {
 		fmt.Println("This node is the Introducer. Adding itself to the member list.")
-		memberlist.AddNode(cassandra.Domain, cassandra.MemberPort)// 调用 addNode 函数将自己添加到成员列表
+		memberlist.AddNode(cassandra.Domain, cassandra.MemberPort) // 调用 addNode 函数将自己添加到成员列表
 	}
 	// Start background processes
 	go memberlist.ListenAndReply(cassandra.MemberPort) //启动8080端口，监听各个vm发来的ping
@@ -58,21 +58,21 @@ func main() {
 				fmt.Println("Usage: create <localFilename> <hyDFSFilename>")
 				continue
 			}
-			file.Create(fields[1], fields[2]) // 传递两个参数
+			file.Create(fields[1], fields[2], true) // default: continue after quorum
 
 		case "get":
 			if len(fields) < 2 {
 				fmt.Println("Usage: get <filename>")
 				continue
 			}
-			file.Get(fields[1], fields[2]) // 传递一个参数
+			file.Get(fields[1], fields[2])
 
 		case "append":
 			if len(fields) < 3 {
 				fmt.Println("Usage: append <filename> <content>")
 				continue
 			}
-			file.Append(fields[1], fields[2]) // 传递两个参数
+			file.Append(fields[1], fields[2], true) // default: continue after quorum
 		// case "merge":
 		// 	merge()
 		case "multiappend":
@@ -83,13 +83,13 @@ func main() {
 
 			// filename 是第一个参数
 			filename := fields[1]
-			fmt.Println("filename:",filename)
+			fmt.Println("filename:", filename)
 
 			// 将虚拟机地址和本地文件名转换为切片
 			vmAddresses := strings.Split(fields[2], ",")
-			fmt.Println("vmAddresses:",vmAddresses)
+			fmt.Println("vmAddresses:", vmAddresses)
 			localFilenames := strings.Split(fields[3], ",")
-			fmt.Println("localFilenames:",localFilenames)
+			fmt.Println("localFilenames:", localFilenames)
 
 			// 检查是否地址和文件名数量匹配
 			if len(vmAddresses) != len(localFilenames) {
