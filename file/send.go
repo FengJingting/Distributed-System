@@ -91,13 +91,13 @@ func getTargetServer(filename string) *cassandra.Node {
         if node.Predecessor != nil && 
             ((uint64(node.Predecessor.ID) < hashValue && uint64(node.ID) >= hashValue) || 
              (uint64(node.Predecessor.ID) > uint64(node.ID) && (hashValue >= uint64(node.Predecessor.ID) || hashValue < uint64(node.ID)))) {
-            return &node
+			return cassandra.Ring.Nodes[node.ID]
         }
     }
 
     // Wraparound case: If hash does not fit between any predecessors and IDs,
     // it belongs to the first node in the sorted list
-    return &nodes[0]
+    return cassandra.Ring.Nodes[nodes[0].ID]
 }
 
 
@@ -205,10 +205,18 @@ func Create(localFilename, hyDFSFilename string) error {
 			return nil
 		}
 	}else{
+		fmt.Printf("Self: ID=%d, IP=%s, Port=%s\n", server.ID, server.IP, server.Port,)
+		if server.Successor != nil {
+			fmt.Printf("Successor: ID=%d, IP=%s, Port=%s\n", server.Successor.ID, server.Successor.IP, server.Successor.Port)
+		} else {
+			fmt.Println("Successor: None")
+		}
 		send1 := SendFile(*server, hyDFSFilename, content)
 		fmt.Println("send1")
+		fmt.Printf("First Successor: ID=%d, IP=%s, Port=%s\n", server.Successor.ID, server.Successor.IP, server.Successor.Port)
 		send2 := SendFile(*server.Successor, hyDFSFilename, content)
 		fmt.Println("send2")
+		
 		send3 := SendFile(*server.Successor.Successor, hyDFSFilename, content)
 		fmt.Println("send3")
 		if send1 != nil || send2 != nil || send3 != nil {

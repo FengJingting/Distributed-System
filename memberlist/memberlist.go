@@ -111,6 +111,24 @@ func List_self() {
 
 func Join() {
     fmt.Println("join function called")
+    // Clear all files in the `hydfs` directory
+    directory := "./files/hydfs/"
+    files, err := ioutil.ReadDir(directory)
+    if err != nil {
+        fmt.Println("Error reading hydfs directory:", err)
+    } else {
+        for _, file := range files {
+            if !file.IsDir() {
+                filePath := directory + file.Name()
+                err := os.Remove(filePath)
+                if err != nil {
+                    fmt.Printf("Error deleting file %s: %v\n", file.Name(), err)
+                } else {
+                    fmt.Printf("Cleared file: %s\n", file.Name())
+                }
+            }
+        }
+    }
     // 发送加入消息给 Introducer
     message := "join+" + cassandra.Domain
     send(cassandra.Introducer, cassandra.MemberPort, message)
