@@ -135,15 +135,12 @@ func Join() {
 }
 
 func changeStatus(newStatus, nodeID string) {
+    fmt.Println("change status called")
     var nodeToMove cassandra.Node
     var found bool
-
-    // 加锁以安全访问 `Memberlist`
-    cassandra.CountMutex.Lock()
-    defer cassandra.CountMutex.Unlock()
-
     // 在 `Memberlist` 中找到节点的当前状态并记录其状态
     for status, nodes := range cassandra.Memberlist {
+        fmt.Println("hello",status, nodes)
         for i, node := range nodes {
             fmt.Println("find node")
             if fmt.Sprint(node.ID) == nodeID {
@@ -151,7 +148,9 @@ func changeStatus(newStatus, nodeID string) {
                 nodeToMove = node
 
                 // 从当前状态列表中删除节点
+                cassandra.CountMutex.Lock()
                 cassandra.Memberlist[status] = append(nodes[:i], nodes[i+1:]...)
+                cassandra.CountMutex.Unlock()
                 found = true
                 break
             }
@@ -164,11 +163,13 @@ func changeStatus(newStatus, nodeID string) {
     // 如果找到节点，则将其添加到新的状态列表并从哈希环中删除
     if found {
         // 将节点添加到 `newStatus` 列表中
+        cassandra.CountMutex.Lock()
         cassandra.Memberlist[newStatus] = append(cassandra.Memberlist[newStatus], nodeToMove)
-
+        cassandra.CountMutex.Unlock()
         // 从一致性哈希环中删除节点
+        cassandra.CountMutex.Lock()
         cassandra.Ring.RemoveNode(nodeToMove.ID) // 假设 `RemoveNode` 方法已在 `Ring` 中实现
-
+        cassandra.CountMutex.Unlock()
         // 如果newStatus是failed，则进行副本检查
         // fmt.Println("hello",newStatus)
         if newStatus == "failed" {
