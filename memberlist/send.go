@@ -9,15 +9,15 @@ import (
 )
 
 func send_status(status string, selfIP string) {
-	// status option: alive/suspect/fail/leave
+	// Status options: alive/suspect/fail/leave
 	message := status
-	// send to all servers except itself
+	// Send to all servers except itself
 	for _, node := range cassandra.Memberlist["alive"] {
-		serverIP := node.IP  // 使用 node.IP 而不是 node[0]
+		serverIP := node.IP  // Use node.IP instead of node[0]
 		if serverIP == selfIP {
 			continue
 		}
-		port := node.Port  // 使用 node.Port 而不是 node[1]
+		port := node.Port  // Use node.Port instead of node[1]
 		send(serverIP, port, message)
 	}
 }
@@ -61,7 +61,6 @@ func send_update_whole(status string, selfIP string) {
 	return
 }
 
-
 func send_ping(ip, port string, t float64) bool {
 	// Send a ping message to a specified node
 	message := "ping"
@@ -84,9 +83,6 @@ func send_ping(ip, port string, t float64) bool {
 		fmt.Println("Error sending ping:", err)
 		return false
 	}
-	//currentTime := time.Now().Format("2006-01-02 15:04:05")
-	//fmt.Println("Ping sent to", ip, currentTime)
-
 	// Set a read deadline for the response
 	conn.SetReadDeadline(time.Now().Add(time.Duration(t * float64(time.Second))))
 
@@ -100,7 +96,6 @@ func send_ping(ip, port string, t float64) bool {
 
 	return string(buffer[:n]) == "ack"
 }
-
 
 func send(ip string, port string, message string) {
 	fmt.Printf("Attempting to send message to IP: %s, Port: %s\n", ip, port)
@@ -136,11 +131,9 @@ func send(ip string, port string, message string) {
 	fmt.Printf("Received response from %s: %s\n", remoteAddr, string(buffer[:n]))
 }
 
-
-
-// update (one string)
+// Update (one string)
 func send_update(content string, status string, selfIP string) {
-	// status option: alive/suspect/failed/leave
+	// Status options: alive/suspect/failed/leave
 	message := status + "+" + content
 	for _, node := range cassandra.Memberlist["alive"] {
 		serverIP := node.IP

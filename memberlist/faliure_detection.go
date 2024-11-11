@@ -1,4 +1,4 @@
-package memberlist
+package memberlist 
 
 import (
 	"fmt"
@@ -17,20 +17,19 @@ func detect_failure(t float64) {
 		ip := node.IP     // IP
 		port := node.Port // Port
 
-		// skip itself
+		// Skip itself
 		if ip == cassandra.Domain {
 			continue
 		}
 
-		// send ping
+		// Send ping
 		if !send_ping(ip, port, t) {
 			fmt.Printf("Node %s failed to respond\n", ip)
-			//process depend on suspiction mode
+			// Process based on suspicion mode
 			// If ifSus is false, mark the node as failed and broadcast the status
 			fmt.Printf("Marking node %s as failed and broadcasting failure\n", ip)
 			changeStatus("failed", fmt.Sprint(node.ID))
-			send_update( fmt.Sprint(node.ID),"failed",cassandra.Domain)
-
+			send_update(fmt.Sprint(node.ID), "failed", cassandra.Domain)
 		}
 	}
 }

@@ -52,34 +52,33 @@ func ListenAndReply(port string) {
 		} else if len(messageParts) == 2 && messageParts[0] == "failed" {
 			// Handle failed node
 			fmt.Printf("Node failed\n")
-			// 获取失败节点的 IP 和端口
+			// Retrieve the IP and port of the failed node
 			failedID := messageParts[1]
-			// 向发送方确认接收到了 "failed" 消息
+			// Confirm receipt of the "failed" message to the sender
 			_, err := conn.WriteToUDP([]byte("received"), remoteAddr)
 			if err != nil {
 				fmt.Println("Error sending ack for failed message:", err)
 				return
 			}
 			
-			// 查找并移除失败节点
+			// Find and remove the failed node
 			cassandra.CountMutex.Lock()
 			defer cassandra.CountMutex.Unlock()
 			changeStatus("failed", failedID)
 		} else if len(messageParts) == 2 && messageParts[0] == "join" {
 			fmt.Printf("Node Added\n")
-			// 解析消息并调用 addNode 函数添加节点
-			// 调用 addNode 添加节点
+			// Parse the message and call the addNode function to add the node
 			newIP := messageParts[1]
-			newPort := "8080"  // 使用接收到的端口信息
+			newPort := "8080"  // Use the received port information
 			AddNode(newIP, newPort)
 			_, err = conn.WriteToUDP([]byte("received"), remoteAddr)
 			if err != nil {
 				fmt.Println("Error sending ack:", err)
 				continue
 			}
-			// 将 memberlist 和 ring 编码为 JSON 并发送回给请求者
+			// Encode the memberlist and ring as JSON and send it back to the requester
 			send_update_whole("update", cassandra.Domain)
-			// TODO: 写入日志
+			// TODO: Write to log
 			// cassandra.Write_to_log()
 
 		} else if len(messageParts) == 3 && messageParts[0] == "update" {
@@ -92,7 +91,7 @@ func ListenAndReply(port string) {
 				 return
 			 }
 		 
-			 // 解析 `ring` JSON 数据
+			 // Parse `ring` JSON data
 			 var newRing cassandra.ConsistentHashRing
 			 err = json.Unmarshal([]byte(messageParts[2]), &newRing)
 			 if err != nil {
@@ -100,20 +99,20 @@ func ListenAndReply(port string) {
 				 return
 			 }
 		 
-			 // 使用锁确保对全局 `memberlist` 和 `ring` 的线程安全更新
+			 // Use a lock to ensure thread-safe updates to the global `memberlist` and `ring`
 			 cassandra.CountMutex.Lock()
 			 cassandra.Memberlist = newMemberlist
 			 *cassandra.Ring = newRing
 			 cassandra.CountMutex.Unlock()
 			 
-			 // 发送 `ack` 确认消息
+			 // Send `ack` confirmation message
 			 _, err = conn.WriteToUDP([]byte("received"), remoteAddr)
 			 if err != nil {
 				 fmt.Println("Error sending ack:", err)
 				 return
 			 }
 			 
-			 // 输出更新后的 `memberlist` 和 `ring`
+			 // Output the updated `memberlist` and `ring`
 			 fmt.Println("Updated Memberlist and Ring:")
 			 List_mem_ids()
 			 fmt.Println("Updated Ring:")
@@ -127,7 +126,7 @@ func ListenAndReply(port string) {
 	}
 }
 
-// addNode 初始化并添加新节点到 alive 列表中
+// addNode initializes and adds a new node to the alive list
 func AddNode(ip string, port string) {
 	fmt.Println("_________Add Node___________")
 	ID := utils.Hash(ip+port)
@@ -137,13 +136,13 @@ func AddNode(ip string, port string) {
         Port:      port,
         Timestamp: int(time.Now().Unix()),
     }
-    // 将新节点添加到 memberlist 的 alive 列表中
+    // Add the new node to the alive list in the memberlist
     cassandra.CountMutex.Lock()
     defer cassandra.CountMutex.Unlock()
-	fmt.Println("cassandra.Memberlist",cassandra.Memberlist)
+	fmt.Println("cassandra.Memberlist", cassandra.Memberlist)
     cassandra.Memberlist["alive"] = append(cassandra.Memberlist["alive"], *node)
     fmt.Printf("Node added to 'alive': ID=%d, IP=%s, Port=%s, Timestamp=%d\n", node.ID, node.IP, node.Port, node.Timestamp)
     
 	cassandra.Ring.AddRing(node)
-
 }
+

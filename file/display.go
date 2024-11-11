@@ -1,4 +1,4 @@
-package file
+package file 
 
 import (
     "bufio"
@@ -14,7 +14,7 @@ import (
 // is function for handling lsHyDFSfilename command
 func Is() {
     fmt.Print("is_ function called: ")
-    fmt.Print("请输入文件名: ")
+    fmt.Print("Please enter the filename: ")
     reader := bufio.NewReader(os.Stdin)
     filename, _ := reader.ReadString('\n')
     filename = strings.TrimSpace(filename) // Remove newline and trim
@@ -23,12 +23,12 @@ func Is() {
     
     // Print each VM address and ID in the result
     if len(result) > 0 {
-        fmt.Println("存有该文件的虚拟机信息：")
+        fmt.Println("VMs containing the file information:")
         for _, entry := range result {
             fmt.Println(entry)
         }
     } else {
-        fmt.Println("没有找到存有该文件的虚拟机。")
+        fmt.Println("No VMs found that contain the file.")
     }
 }
 
@@ -56,7 +56,7 @@ func lsHyDFSfilename(filename string) []string {
         serverAddr := server.IP
         serverID := fmt.Sprintf("%d", server.ID)
         
-        // 尝试从服务器获取文件内容
+        // Try to retrieve file content from the server
         content, err := FetchFile(*server, filename)
         if err == nil && content != nil {
             result = append(result, fmt.Sprintf("VM Address: %s, VM ID: %s", serverAddr, serverID))
@@ -64,7 +64,7 @@ func lsHyDFSfilename(filename string) []string {
             fmt.Printf("File not found on server: %s (ID: %s)\n", serverAddr, serverID)
         }
 
-        // 使用 SuccessorID 获取下一个服务器
+        // Use SuccessorID to get the next server
         if server.SuccessorID != 0 {
             server = getServerByID(server.SuccessorID)
         } else {
@@ -76,8 +76,7 @@ func lsHyDFSfilename(filename string) []string {
     return result
 }
 
-
-// 测试通过
+// Test passed
 func Store() {
     fmt.Print("store function called: ")
     // Retrieve local node information based on Domain/IP
@@ -120,7 +119,7 @@ func getServerFromAddress(VMaddress string) (*cassandra.Node, error) {
 }
 
 func Getfromreplica() {
-    fmt.Print("请输入 VMaddress, HyDFSfilename 和 localfilename（用空格分隔）: ")
+    fmt.Print("Please enter VM address, HyDFS filename, and local filename (separated by spaces): ")
     reader := bufio.NewReader(os.Stdin)
     input, _ := reader.ReadString('\n')
     input = strings.TrimSpace(input)
@@ -128,7 +127,7 @@ func Getfromreplica() {
     parts := strings.Split(input, " ")
     fmt.Println(parts)
     if len(parts) != 3 {
-        fmt.Println("输入格式不正确，请确保输入三个参数并用空格分隔。")
+        fmt.Println("Incorrect input format, please ensure three parameters are entered, separated by spaces.")
         return
     }
 

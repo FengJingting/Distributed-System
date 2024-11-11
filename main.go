@@ -13,19 +13,19 @@ import (
 )
 
 func main() {
-	// load configs
+	// Load configurations
 	cassandra.InitConfig()
 	file.Init()
-	// 判断是否为 Introducer 节点
+	// Check if this node is the Introducer
 	if cassandra.Introducer == cassandra.Domain {
 		fmt.Println("This node is the Introducer. Adding itself to the member list.")
-		memberlist.AddNode(cassandra.Domain, cassandra.MemberPort) // 调用 addNode 函数将自己添加到成员列表
+		memberlist.AddNode(cassandra.Domain, cassandra.MemberPort) // Call addNode to add itself to the member list
 	}
 	// Start background processes
-	go memberlist.ListenAndReply(cassandra.MemberPort) //启动8080端口，监听各个vm发来的ping
+	go memberlist.ListenAndReply(cassandra.MemberPort) // Start on port 8080, listen for pings from other VMs
 	go memberlist.Detect_failure_n(20)
 
-	// 启动文件操作服务器 9090
+	// Start the file operation server on port 9090
 	go startFileOperationServer()
 
 	// Command interface
@@ -35,30 +35,30 @@ func main() {
 		input, _ := reader.ReadString('\n')
 		input = strings.TrimSpace(input)
 
-		// 将输入拆分为命令和参数
+		// Split input into command and arguments
 		fields := strings.Fields(input)
 		if len(fields) == 0 {
 			continue
 		}
 
-		// 获取命令名称
+		// Get command name
 		command := fields[0]
 
 		switch command {
-		// memberlist operation
+		// Member list operations
 		case "list_mem_ids":
 			memberlist.List_mem_ids()
 		case "list_self":
 			memberlist.List_self()
 		case "join":
 			memberlist.Join()
-		// basic file operation
+		// Basic file operations
 		case "create":
 			if len(fields) < 3 {
 				fmt.Println("Usage: create <localFilename> <hyDFSFilename>")
 				continue
 			}
-			file.Create(fields[1], fields[2], true) // default: continue after quorum
+			file.Create(fields[1], fields[2], true) // Default: continue after quorum
 
 		case "get":
 			fmt.Println(fields)
@@ -73,7 +73,7 @@ func main() {
 				fmt.Println("Usage: append <filename> <content>")
 				continue
 			}
-			file.Append(fields[1], fields[2], true) // default: continue after quorum
+			file.Append(fields[1], fields[2], true) // Default: continue after quorum
 		// case "merge":
 		// 	merge()
 		case "multiappend":
@@ -82,23 +82,23 @@ func main() {
 				continue
 			}
 
-			// filename 是第一个参数
+			// filename is the first argument
 			filename := fields[1]
 			fmt.Println("filename:", filename)
 
-			// 将虚拟机地址和本地文件名转换为切片
+			// Convert VM addresses and local filenames into slices
 			vmAddresses := strings.Split(fields[2], ",")
 			fmt.Println("vmAddresses:", vmAddresses)
 			localFilenames := strings.Split(fields[3], ",")
 			fmt.Println("localFilenames:", localFilenames)
 
-			// 检查是否地址和文件名数量匹配
+			// Check if the number of addresses matches the number of filenames
 			if len(vmAddresses) != len(localFilenames) {
 				fmt.Println("The number of VM addresses and local filenames must match.")
 				continue
 			}
 
-			// 调用 MultiAppend 函数
+			// Call the MultiAppend function
 			err := file.MultiAppend(filename, vmAddresses, localFilenames)
 			if err != nil {
 				fmt.Printf("MultiAppend failed: %v\n", err)
@@ -109,7 +109,7 @@ func main() {
 				fmt.Println("Usage: multiappend <filename> <vmAddresses> <localFilenames>")
 				continue
 			}
-		// display operation
+		// Display operations
 		case "is":
 			file.Is()
 		case "store":
@@ -123,9 +123,9 @@ func main() {
 	}
 }
 
-// 启动文件操作服务器函数
+// Start file operation server function
 func startFileOperationServer() {
-	listener, err := net.Listen("tcp", ":"+cassandra.FilePort) // 在9090端口上启动监听
+	listener, err := net.Listen("tcp", ":"+cassandra.FilePort) // Start listening on port 9090
 	if err != nil {
 		log.Fatalf("Error starting file operation server: %v", err)
 	}
@@ -140,7 +140,7 @@ func startFileOperationServer() {
 			continue
 		}
 
-		// 在 goroutine 中处理每个连接
+		// Handle each connection in a goroutine
 		go func(c net.Conn) {
 			defer c.Close()
 			if err := file.HandleFileOperation(c); err != nil {

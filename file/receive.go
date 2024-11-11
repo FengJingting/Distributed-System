@@ -14,7 +14,7 @@ func HandleFileOperation(conn net.Conn) error {
 	defer conn.Close()
 	reader := bufio.NewReader(conn)
 
-	// 读取操作和文件名
+	// Read operation and filename
 	header, err := reader.ReadString('\n')
 	if err != nil {
 		return fmt.Errorf("error reading from connection: %v", err)
@@ -31,7 +31,7 @@ func HandleFileOperation(conn net.Conn) error {
 	switch operation {
 	case "GET":
 		fmt.Println("------------receive_get-------------")
-		// 读取文件内容并返回
+		// Read file content and return it
 		filepath := DfsDir + filename
 		_, err := os.Stat(filepath)
 		if os.IsNotExist(err) {
@@ -42,83 +42,84 @@ func HandleFileOperation(conn net.Conn) error {
 		if err != nil {
 			return fmt.Errorf("error reading file %s: %v", filename, err)
 		}
-		conn.Write(content) // 将文件内容发送回客户端
+		conn.Write(content) // Send file content back to the client
+		fmt.Println(content)
 		fmt.Printf("File %s read and sent back successfully\n", filename)
 
-		case "CREATE": 
-			fmt.Println("------------receive_create-------------")
-		
-			// 构建文件路径
-			filepath := DfsDir + filename
-		
-			// 检查本地文件是否已存在
-			if _, err := os.Stat(filepath); err == nil {
-				// 文件存在，无需写入，直接返回成功消息
-				fmt.Printf("File %s already exists in local directory\n", filename)
-				conn.Write([]byte("OK\n")) // 发送成功消息
-				return nil
-			}
-		
-			// 读取文件大小
-			var fileSize int64
-			_, err := fmt.Fscanf(reader, "%d\n", &fileSize)
-			if err != nil {
-				conn.Write([]byte("ERROR reading file size\n")) // 发送错误消息
-				return fmt.Errorf("error reading file size: %v", err)
-			}
-		
-			// 读取文件内容
-			content := make([]byte, fileSize)
-			_, err = io.ReadFull(reader, content)
-			if err != nil {
-				conn.Write([]byte("ERROR reading file content\n")) // 发送错误消息
-				return fmt.Errorf("error reading file content: %v", err)
-			}
-		
-			// 写入文件
-			err = ioutil.WriteFile(filepath, content, 0644)
-			if err != nil {
-				conn.Write([]byte("ERROR writing file\n")) // 发送错误消息
-				return fmt.Errorf("error creating file %s: %v", filename, err)
-			}
-		
-			fmt.Printf("File %s created successfully in local directory\n", filename)
-			conn.Write([]byte("OK\n")) // 发送成功消息
+	case "CREATE": 
+		fmt.Println("------------receive_create-------------")
+	
+		// Construct file path
+		filepath := DfsDir + filename
+	
+		// Check if the file already exists locally
+		if _, err := os.Stat(filepath); err == nil {
+			// File exists, no need to write, directly return success message
+			fmt.Printf("File %s already exists in local directory\n", filename)
+			conn.Write([]byte("OK\n")) // Send success message
+			return nil
+		}
+	
+		// Read file size
+		var fileSize int64
+		_, err := fmt.Fscanf(reader, "%d\n", &fileSize)
+		if err != nil {
+			conn.Write([]byte("ERROR reading file size\n")) // Send error message
+			return fmt.Errorf("error reading file size: %v", err)
+		}
+	
+		// Read file content
+		content := make([]byte, fileSize)
+		_, err = io.ReadFull(reader, content)
+		if err != nil {
+			conn.Write([]byte("ERROR reading file content\n")) // Send error message
+			return fmt.Errorf("error reading file content: %v", err)
+		}
+	
+		// Write to file
+		err = ioutil.WriteFile(filepath, content, 0644)
+		if err != nil {
+			conn.Write([]byte("ERROR writing file\n")) // Send error message
+			return fmt.Errorf("error creating file %s: %v", filename, err)
+		}
+	
+		fmt.Printf("File %s created successfully in local directory\n", filename)
+		conn.Write([]byte("OK\n")) // Send success message
 
 	case "APPEND":
 		fmt.Println("------------receive_append-------------")
 		var fileSize int64
 		_, err := fmt.Fscanf(reader, "%d\n", &fileSize)
 		if err != nil {
-			conn.Write([]byte("ERROR reading file size\n")) // 发送错误消息
+			conn.Write([]byte("ERROR reading file size\n")) // Send error message
 			return fmt.Errorf("error reading file size: %v", err)
 		}
 
 		content := make([]byte, fileSize)
 		_, err = io.ReadFull(reader, content)
 		if err != nil {
-			conn.Write([]byte("ERROR reading file content\n")) // 发送错误消息
+			conn.Write([]byte("ERROR reading file content\n")) // Send error message
 			return fmt.Errorf("error reading file content: %v", err)
 		}
 
 		filepath := DfsDir + filename
 		file, err := os.OpenFile(filepath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
 		if err != nil {
-			conn.Write([]byte("ERROR opening file\n")) // 发送错误消息
+			conn.Write([]byte("ERROR opening file\n")) // Send error message
 			return fmt.Errorf("error opening file %s: %v", filename, err)
 		}
 		defer file.Close()
 
 		_, err = file.Write(content)
 		if err != nil {
-			conn.Write([]byte("ERROR appending to file\n")) // 发送错误消息
+			conn.Write([]byte("ERROR appending to file\n")) // Send error message
 			return fmt.Errorf("error appending to file %s: %v", filename, err)
 		}
 		fmt.Printf("Content appended to file %s successfully\n", filename)
-		conn.Write([]byte("OK\n")) // 发送成功消息
+		conn.Write([]byte("OK\n")) // Send success message
 
 	default:
-		conn.Write([]byte("ERROR unknown operation\n")) // 发送错误消息
+		conn.Write([]byte("ERROR unknown operation\n")) // Send error message
 		return fmt.Errorf("unknown operation: %s", operation)
 	}
 

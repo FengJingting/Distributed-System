@@ -8,7 +8,6 @@ import (
 	// "encoding/json"
 )
 
-// 导出 hash 函数为 Hash
 func Hash(filename string) uint64 {
     hasher := fnv.New64a()
     hasher.Write([]byte(filename))

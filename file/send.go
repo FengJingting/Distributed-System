@@ -10,24 +10,24 @@ import (
 	//"time"
 	"bufio"
 	"io/ioutil"
+
 	// "log"
 	"mp3/cassandra"
 	"mp3/utils"
-	"strconv"
 	"strings"
 	"sync"
 	// "net"
 )
 
-// super parematers
+// super parameters
 const (
 	RingLength uint64 = 1 << 32
 	DfsDir            = "./files/hydfs/"
 	LocalDir          = "./files/local/"
 	CacheSize         = 100 // Set the cache size
-	N                 = 3   // 总副本数
-	W                 = 2   // 写 Quorum
-	R                 = 2   // 读 Quorum
+	N                 = 3   // Total replicas
+	W                 = 2   // Write Quorum
+	R                 = 2   // Read Quorum
 )
 
 // Cache for storing file contents
@@ -60,23 +60,23 @@ func PrintCacheContents() {
 // ----------------------node---------------------
 // Node operator
 func AddNode(node cassandra.Node) {
-	// 加锁
+	// Lock
 	cassandra.CountMutex.Lock()
 	defer cassandra.CountMutex.Unlock()
 
-	// 向 "alive" 状态的列表中添加节点
+	// Add node to the "alive" state list
 	cassandra.Memberlist["alive"] = append(cassandra.Memberlist["alive"], node)
 }
 
 func RemoveNode(nodeID uint64) {
-	// 加锁
+	// Lock
 	cassandra.CountMutex.Lock()
 	defer cassandra.CountMutex.Unlock()
 
-	// 遍历 "alive" 状态列表，寻找并删除指定节点
+	// Iterate through the "alive" list to find and remove the specified node
 	for i, node := range cassandra.Memberlist["alive"] {
 		if node.ID == nodeID {
-			// 找到节点，移除它
+			// Node found, remove it
 			cassandra.Memberlist["alive"] = append(cassandra.Memberlist["alive"][:i], cassandra.Memberlist["alive"][i+1:]...)
 			break
 		}
@@ -113,7 +113,6 @@ func getTargetServer(filename string) *cassandra.Node {
 	return cassandra.Ring.Nodes[nodes[0].ID]
 }
 
-
 func FetchFileWithTimestamp(node cassandra.Node, filename string) ([]byte, int64, error) {
 	address := node.IP + ":" + cassandra.FilePort
 	conn, err := net.Dial("tcp", address)
@@ -122,23 +121,25 @@ func FetchFileWithTimestamp(node cassandra.Node, filename string) ([]byte, int64
 	}
 	defer conn.Close()
 
-	// 发送 GET 请求
+	// Send GET request
 	message := fmt.Sprintf("GET %s", filename)
 	_, err = conn.Write([]byte(message + "\n"))
 	if err != nil {
 		return nil, 0, fmt.Errorf("error sending request: %v", err)
 	}
 
-	// 接收内容和时间戳
+	// Receive content and timestamp
 	reader := bufio.NewReader(conn)
-	timestampStr, err := reader.ReadString('\n')
+	//timestampStr, err := reader.ReadString('\n')
 	if err != nil {
 		return nil, 0, fmt.Errorf("error reading timestamp: %v", err)
 	}
-	timestampStr = strings.TrimSpace(timestampStr)
-	timestamp, _ := strconv.ParseInt(timestampStr, 10, 64)
-
+	//timestampStr = strings.TrimSpace(timestampStr)
+	//timestamp, _ := strconv.ParseInt(timestampStr, 10, 64)
+	timestamp := int64(node.Timestamp)
+	fmt.Println("hello", timestamp)
 	content, err := ioutil.ReadAll(reader)
+	fmt.Println("hello", content)
 	return content, timestamp, err
 }
 
@@ -146,24 +147,24 @@ func FetchFileWithTimestamp(node cassandra.Node, filename string) ([]byte, int64
 func SendFile(node cassandra.Node, filename string, content []byte) error {
 	fmt.Println("-----------send_SendFile-------------")
 	address := node.IP + ":" + cassandra.FilePort
-	fmt.Println("address:",address)
+	fmt.Println("address:", address)
 	conn, err := net.Dial("tcp", address)
-	fmt.Println("conn",conn)
+	fmt.Println("conn", conn)
 	if err != nil {
 		return fmt.Errorf("connection error: %v", err)
 	}
 	defer conn.Close()
 
-	// 构造并发送 CREATE 请求
+	// Construct and send CREATE request
 	fileSize := len(content)
 	message := fmt.Sprintf("CREATE %s\n%d\n%s", filename, fileSize, content)
-	fmt.Println("message",message)
+	fmt.Println("message", message)
 	_, err = conn.Write([]byte(message))
 	if err != nil {
 		return fmt.Errorf("error sending file: %v", err)
 	}
 
-	// 读取确认消息
+	// Read acknowledgment message
 	reader := bufio.NewReader(conn)
 	ack, err := reader.ReadString('\n')
 	if err != nil || strings.TrimSpace(ack) != "OK" {
@@ -196,7 +197,6 @@ func FetchFileReplica(node cassandra.Node, filename string) ([]byte, error) {
 	response, err := ioutil.ReadAll(conn)
 	return response, err
 }
-
 
 // Fetch a file from a server
 func FetchFile(node cassandra.Node, filename string) ([]byte, error) {
@@ -244,7 +244,7 @@ func sendAppend(node cassandra.Node, filename string, content []byte) error {
 	}
 	defer conn.Close()
 
-	// 构造并发送 APPEND 请求
+	// Construct and send APPEND request
 	fileSize := len(content)
 	message := fmt.Sprintf("APPEND %s\n%d\n%s", filename, fileSize, content)
 	_, err = conn.Write([]byte(message))
@@ -252,7 +252,7 @@ func sendAppend(node cassandra.Node, filename string, content []byte) error {
 		return fmt.Errorf("error sending append request: %v", err)
 	}
 
-	// 读取确认消息
+	// Read acknowledgment message
 	reader := bufio.NewReader(conn)
 	ack, err := reader.ReadString('\n')
 	if err != nil || strings.TrimSpace(ack) != "OK" {
@@ -357,6 +357,7 @@ func Get(hyDFSFilename, localFilename string) error {
 	var latestContent []byte
 	var latestTimestamp int64
 	successCount := 0
+	latestTimestamp = -1
 
 	// Retrieve successors using the SuccessorID fields
 	servers := []*cassandra.Node{server}
@@ -373,10 +374,12 @@ func Get(hyDFSFilename, localFilename string) error {
 			continue
 		}
 		content, timestamp, err := FetchFileWithTimestamp(*srv, hyDFSFilename)
+		
 		if err == nil {
 			successCount++
 			if timestamp > latestTimestamp {
 				latestContent = content
+				fmt.Println("latestContent", latestContent)
 				latestTimestamp = timestamp
 			}
 		}
@@ -389,16 +392,15 @@ func Get(hyDFSFilename, localFilename string) error {
 	return fmt.Errorf("read quorum not reached, only %d nodes succeeded", successCount)
 }
 
-
 // Append
-func Append(localFilename, hyDFSFilename string, continueAfterQuorum bool) error { 
+func Append(localFilename, hyDFSFilename string, continueAfterQuorum bool) error {
 	fmt.Println("------------send_append-------------")
 	localFilepath := LocalDir + localFilename
 	content, err := ioutil.ReadFile(localFilepath)
 	if err != nil {
 		return fmt.Errorf("error reading local file: %v", err)
 	}
-	
+
 	// Get the target server for the file
 	server := getTargetServer(hyDFSFilename)
 	if server == nil {
@@ -443,62 +445,75 @@ func Append(localFilename, hyDFSFilename string, continueAfterQuorum bool) error
 	return fmt.Errorf("append quorum not reached, only %d nodes succeeded", successCount)
 }
 
-
 func Merge() {
 	fmt.Println("------------send_merge-------------")
-	// fmt.Print("请输入文件名: ")
+	// fmt.Print("Please enter the filename: ")
 	// reader := bufio.NewReader(os.Stdin)
 	// filename, _ := reader.ReadString('\n')
-	// filename = strings.TrimSpace(filename) // 去除换行符和空白
+	// filename = strings.TrimSpace(filename) // Remove newline and spaces
 
-	// // 输出或处理输入的文件名
-	// fmt.Printf("你输入的文件名是: %s\n", filename)
-	// TODO: merge操作
+	// // Output or process the input filename
+	// fmt.Printf("The filename you entered is: %s\n", filename)
+	// TODO: merge operation
 }
 
-// multiappend 函数：提示用户输入文件名、虚拟机地址和本地文件名，并进行并发的追加操作
+// multiappend function: Prompts the user for a filename, VM address, and local filename, and performs concurrent append operations
 func MultiAppend(filename string, vmAddresses []string, localFilenames []string) error {
-	// 检查输入是否匹配
-	// if len(vmAddresses) != len(localFilenames) {
-	// 	return fmt.Errorf("number of VM addresses and local filenames must be the same")
-	// }
+	fmt.Println("-----------send_MultiAppend----------")
+	fmt.Println("localFilenames:", localFilenames)
+	// Check if inputs match
+	if len(vmAddresses) != len(localFilenames) {
+		return fmt.Errorf("number of VM addresses and local filenames must be the same")
+	}
+	//Append(localFilenames[0], filename, true)
+	// Create a wait group to wait for all concurrent operations to complete
+	var wg sync.WaitGroup
 
-	// // 创建等待组，用于等待所有并发操作完成
-	// var wg sync.WaitGroup
+	// Iterate over VM addresses and corresponding local filenames
+	for i, addr := range vmAddresses {
+		fmt.Println("addr:", addr)
+		// Create node information
+		node := cassandra.Node{IP: addr} // Assume all nodes use the same port
 
-	// // 遍历虚拟机地址和对应的本地文件名
-	// for i, addr := range vmAddresses {
-	// 	localFilename := LocalDir + localFilenames[i]
-	// 	fmt.Println("hello", localFilename)
+		// Increase wait group counter
+		wg.Add(1)
 
-	// 	// 读取本地文件内容
-	// 	content, err := ioutil.ReadFile(localFilename)
-	// 	if err != nil {
-	// 		log.Printf("Error reading file %s: %v", localFilename, err)
-	// 		continue
-	// 	}
+		// Concurrently execute multiappend operation
+		go func(n cassandra.Node, f string, localFile string) {
+			defer wg.Done()
 
-	// 	// 创建节点信息
-	// 	node := cassandra.Node{IP: addr} // 假设所有节点使用相同端口
+			// Establish connection to the VM
+			address := n.IP + ":" + cassandra.FilePort
+			conn, err := net.Dial("tcp", address)
+			if err != nil {
+				fmt.Printf("Failed to connect to %s: %v\n", address, err)
+				return
+			}
+			defer conn.Close()
 
-	// 	// 增加等待组计数器
-	// 	wg.Add(1)
+			// Send MULTIAPPEND request specifying the target file and local filename
+			message := fmt.Sprintf("MULTIAPPEND %s\n%s\n", f, localFile)
+			fmt.Println("message:", message)
+			_, err = conn.Write([]byte(message))
+			if err != nil {
+				fmt.Printf("Error sending multiappend request to %s: %v\n", address, err)
+				return
+			}
 
-	// 	filepath := filename
-	// 	// 并发执行 append 操作
-	// 	go func(n cassandra.Node, f string, c []byte) {
-	// 		defer wg.Done()
-	// 		err := sendAppend(n, f, c)
-	// 		if err != nil {
-	// 			fmt.Printf("Failed to append to %s on %s: %v\n", f, n.IP, err)
-	// 		} else {
-	// 			fmt.Printf("Successfully appended to %s on %s\n", f, n.IP)
-	// 		}
-	// 	}(node, filepath, content)
-	// }
+			// Read acknowledgment message
+			reader := bufio.NewReader(conn)
+			ack, err := reader.ReadString('\n')
+			if err != nil || strings.TrimSpace(ack) != "OK" {
+				fmt.Printf("Error confirming append on %s: %v\n", address, err)
+				return
+			}
 
-	// // 等待所有并发任务完成
-	// wg.Wait()
-	// fmt.Println("Multi-append operation completed.")
+			fmt.Printf("Successfully issued multiappend from %s\n", localFile)
+		}(node, filename, localFilenames[i])
+	}
+
+	// Wait for all concurrent tasks to complete
+	wg.Wait()
+	fmt.Println("Multi-append operation completed.")
 	return nil
 }

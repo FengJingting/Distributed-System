@@ -15,7 +15,7 @@ import (
 	"sort"
 )
 
-// initConfig 读取并解析 JSON 配置文件
+// InitConfig reads and parses the JSON configuration file
 func InitConfig() {
 	var config Config
 	data, err := ioutil.ReadFile("./config.json")
@@ -28,18 +28,18 @@ func InitConfig() {
 		log.Fatalf("Error parsing config JSON: %v", err)
 	}
 
-	// 将配置值赋给全局变量
+	// Assign configuration values to global variables
 	Domain = config.Domain
 	FilePort = config.FilePort
 	MemberPort = config.MemberPort
 	Introducer = config.Introducer
 	// fmt.Print(Domain, Port, Introducer)
 
-	// 初始化哈希环
+	// Initialize the hash ring
 	Ring = NewConsistentHashRing()
 }
 
-// Shuffle 函数用于随机打乱节点列表
+// Shuffle function randomly shuffles the list of nodes
 func Shuffle(nodes []Node) {
 	rand.Seed(time.Now().UnixNano())
 	rand.Shuffle(len(nodes), func(i, j int) {
@@ -47,35 +47,35 @@ func Shuffle(nodes []Node) {
 	})
 }
 
-// 初始化一致性哈希环
+// Initialize consistent hash ring
 func NewConsistentHashRing() *ConsistentHashRing {
 	return &ConsistentHashRing{
-		Nodes:        make(map[uint64]*Node), // 使用 `uint64` 和 `*Node`
-		SortedHashes: []uint64{},             // 使用 `uint64`
+		Nodes:        make(map[uint64]*Node), // Use `uint64` and `*Node`
+		SortedHashes: []uint64{},             // Use `uint64`
 	}
 }
 
-// updatePredecessorsAndSuccessors 更新所有节点的前驱和后继
+// UpdatePredecessorsAndSuccessors updates all nodes' predecessors and successors
 func (ring *ConsistentHashRing) UpdatePredecessorsAndSuccessors() {
 	n := len(ring.SortedHashes)
 	for i, hash := range ring.SortedHashes {
 		node := ring.Nodes[hash]
 
-		// 前驱节点：如果 i == 0，则前驱是最后一个节点的 ID，否则前驱是前一个节点的 ID
+		// Predecessor node: if i == 0, the predecessor is the last node's ID; otherwise, the predecessor is the previous node's ID
 		if i == 0 {
 			node.PredecessorID = ring.Nodes[ring.SortedHashes[n-1]].ID
 		} else {
 			node.PredecessorID = ring.Nodes[ring.SortedHashes[i-1]].ID
 		}
 
-		// 后继节点：如果 i == n-1，则后继是第一个节点的 ID，否则后继是下一个节点的 ID
+		// Successor node: if i == n-1, the successor is the first node's ID; otherwise, the successor is the next node's ID
 		if i == n-1 {
 			node.SuccessorID = ring.Nodes[ring.SortedHashes[0]].ID
 		} else {
 			node.SuccessorID = ring.Nodes[ring.SortedHashes[i+1]].ID
 		}
 
-		// 更新节点在环中的位置
+		// Update node's position in the ring
 		ring.Nodes[hash] = node
 	}
 }
@@ -84,18 +84,18 @@ func (ring *ConsistentHashRing) AddRing(node *Node) {
 	ring.Mutex.Lock()
 	defer ring.Mutex.Unlock()
 
-	// 使用节点的 ID 作为 key 添加到哈希环中
-	nodeID := node.ID // 假设 Node ID 已经生成
+	// Use the node's ID as a key to add it to the hash ring
+	nodeID := node.ID // Assuming Node ID is already generated
 	ring.Nodes[nodeID] = node
 
-	// 更新 SortedHashes 列表并保持排序
+	// Update SortedHashes list and keep it sorted
 	ring.SortedHashes = append(ring.SortedHashes, nodeID)
 	sort.Slice(ring.SortedHashes, func(i, j int) bool { return ring.SortedHashes[i] < ring.SortedHashes[j] })
 
-	// 更新前驱和后继关系（确保环结构的完整性）
+	// Update predecessors and successors (ensuring ring structure integrity)
 	ring.UpdatePredecessorsAndSuccessors()
 
-	// 打印哈希环中的节点及其前驱和后继 ID
+	// Print the nodes in the hash ring and their predecessor and successor IDs
 	fmt.Println("Current nodes in the ring:")
 	for _, hash := range ring.SortedHashes {
 		node := ring.Nodes[hash]
@@ -113,23 +113,22 @@ func (ring *ConsistentHashRing) AddRing(node *Node) {
 	}
 }
 
-
-// RemoveNode 从一致性哈希环中移除节点
+// RemoveNode removes a node from the consistent hash ring
 func (ring *ConsistentHashRing) RemoveNode(nodeID uint64) {
 	ring.Mutex.Lock()
 	defer ring.Mutex.Unlock()
 
-	// 检查节点是否存在
+	// Check if the node exists
 	_, exists := ring.Nodes[nodeID]
 	if !exists {
 		fmt.Printf("Node with ID %d not found in the ring.\n", nodeID)
 		return
 	}
 
-	// 从 Nodes 映射中删除节点
+	// Delete the node from the Nodes map
 	delete(ring.Nodes, nodeID)
 
-	// 在 SortedHashes 列表中找到并移除节点的哈希值
+	// Find and remove the node's hash value from the SortedHashes list
 	for i, hash := range ring.SortedHashes {
 		if hash == nodeID {
 			ring.SortedHashes = append(ring.SortedHashes[:i], ring.SortedHashes[i+1:]...)
@@ -137,12 +136,12 @@ func (ring *ConsistentHashRing) RemoveNode(nodeID uint64) {
 		}
 	}
 
-	// 更新所有节点的前驱和后继
+	// Update all nodes' predecessors and successors
 	ring.UpdatePredecessorsAndSuccessors()
 	fmt.Printf("Node with ID %d removed from the ring.\n", nodeID)
 
-	// TODO: 更新文件
-	// 查找后继节点中哪些文件的后继属于自己的前驱到自己这一区间
+	// TODO: Update files
+	// Find which files' successors in the successor node belong to the interval from its predecessor to itself
 
-	// 像后继节点发起文件请求，把对应的文件保存到自己的hydfs中，
+	// Initiate a file request to the successor node and save the corresponding files in its hydfs.
 }
