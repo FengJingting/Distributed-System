@@ -74,8 +74,8 @@ func main() {
 				continue
 			}
 			file.Append(fields[1], fields[2], true) // Default: continue after quorum
-		// case "merge":
-		// 	merge()
+		case "merge":
+			file.Merge(fields[0])
 		case "multiappend":
 			if len(fields) < 4 {
 				fmt.Println("Usage: multiappend <filename> <vmAddresses> <localFilenames>")

@@ -87,6 +87,7 @@ func RemoveNode(nodeID uint64) {
 // Find target node based on consistent hashing
 func getTargetServer(filename string) *cassandra.Node {
 	hashValue := utils.Hash(filename) % RingLength
+	fmt.Println("--------------hashvalue:", hashValue)
 
 	// List of nodes sorted by their ID (hashes in the ring)
 	nodes := cassandra.Memberlist["alive"]
@@ -95,7 +96,7 @@ func getTargetServer(filename string) *cassandra.Node {
 	if len(nodes) == 1 {
 		return cassandra.Ring.Nodes[nodes[0].ID]
 	}
-
+	minNode := uint64(0)
 	for _, node := range nodes {
 		// Fetch the predecessor node using the PredecessorID
 		predecessorNode := cassandra.Ring.Nodes[node.PredecessorID]
@@ -104,13 +105,15 @@ func getTargetServer(filename string) *cassandra.Node {
 		if predecessorNode != nil &&
 			((uint64(predecessorNode.ID) < hashValue && uint64(node.ID) >= hashValue) ||
 				(uint64(predecessorNode.ID) > uint64(node.ID) && (hashValue >= uint64(predecessorNode.ID) || hashValue < uint64(node.ID)))) {
+			fmt.Println("node.ID:", node.ID)
 			return cassandra.Ring.Nodes[node.ID]
 		}
+		if minNode == 0 || node.ID < minNode {
+			minNode = node.ID
+		}
 	}
-
-	// Wraparound case: If hash does not fit between any predecessors and IDs,
-	// it belongs to the first node in the sorted list
-	return cassandra.Ring.Nodes[nodes[0].ID]
+	fmt.Println("node.ID0:", minNode)
+	return cassandra.Ring.Nodes[minNode]
 }
 
 func FetchFileWithTimestamp(node cassandra.Node, filename string) ([]byte, int64, error) {
