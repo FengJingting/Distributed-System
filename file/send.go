@@ -87,6 +87,7 @@ func RemoveNode(nodeID uint64) {
 // Find target node based on consistent hashing
 func getTargetServer(filename string) *cassandra.Node {
 	hashValue := utils.Hash(filename) % RingLength
+	fmt.Println("--------------hashvalue:", hashValue)
 
 	// List of nodes sorted by their ID (hashes in the ring)
 	nodes := cassandra.Memberlist["alive"]
