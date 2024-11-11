@@ -61,19 +61,22 @@ func (ring *ConsistentHashRing) UpdatePredecessorsAndSuccessors() {
 	for i, hash := range ring.SortedHashes {
 		node := ring.Nodes[hash]
 
-		// 前驱节点：如果 i == 0，则前驱是最后一个节点，否则前驱是前一个节点
+		// 前驱节点：如果 i == 0，则前驱是最后一个节点的 ID，否则前驱是前一个节点的 ID
 		if i == 0 {
-			node.Predecessor = ring.Nodes[ring.SortedHashes[n-1]]
+			node.PredecessorID = ring.Nodes[ring.SortedHashes[n-1]].ID
 		} else {
-			node.Predecessor = ring.Nodes[ring.SortedHashes[i-1]]
+			node.PredecessorID = ring.Nodes[ring.SortedHashes[i-1]].ID
 		}
 
-		// 后继节点：如果 i == n-1，则后继是第一个节点，否则后继是下一个节点
+		// 后继节点：如果 i == n-1，则后继是第一个节点的 ID，否则后继是下一个节点的 ID
 		if i == n-1 {
-			node.Successor = ring.Nodes[ring.SortedHashes[0]]
+			node.SuccessorID = ring.Nodes[ring.SortedHashes[0]].ID
 		} else {
-			node.Successor = ring.Nodes[ring.SortedHashes[i+1]]
+			node.SuccessorID = ring.Nodes[ring.SortedHashes[i+1]].ID
 		}
+
+		// 更新节点在环中的位置
+		ring.Nodes[hash] = node
 	}
 }
 
@@ -81,8 +84,8 @@ func (ring *ConsistentHashRing) AddRing(node *Node) {
 	ring.Mutex.Lock()
 	defer ring.Mutex.Unlock()
 
-	// 使用 IP 和端口生成的哈希值（Node ID）作为 key
-	nodeID := node.ID // 假设 Node ID 已经通过 IP 和端口的哈希生成
+	// 使用节点的 ID 作为 key 添加到哈希环中
+	nodeID := node.ID // 假设 Node ID 已经生成
 	ring.Nodes[nodeID] = node
 
 	// 更新 SortedHashes 列表并保持排序
@@ -91,19 +94,25 @@ func (ring *ConsistentHashRing) AddRing(node *Node) {
 
 	// 更新前驱和后继关系（确保环结构的完整性）
 	ring.UpdatePredecessorsAndSuccessors()
-	// 打印哈希环中的节点及其前驱和后继
+
+	// 打印哈希环中的节点及其前驱和后继 ID
 	fmt.Println("Current nodes in the ring:")
-	for _, hash := range Ring.SortedHashes {
-		node := Ring.Nodes[hash]
+	for _, hash := range ring.SortedHashes {
+		node := ring.Nodes[hash]
 		fmt.Printf("Node ID=%d, IP=%s, Port=%s\n", node.ID, node.IP, node.Port)
-		if node.Predecessor != nil {
-			fmt.Printf("  Predecessor: ID=%d\n", node.Predecessor.ID)
+		if node.PredecessorID != 0 {
+			fmt.Printf("  Predecessor ID=%d\n", node.PredecessorID)
+		} else {
+			fmt.Println("  Predecessor: None")
 		}
-		if node.Successor != nil {
-			fmt.Printf("  Successor: ID=%d\n", node.Successor.ID)
+		if node.SuccessorID != 0 {
+			fmt.Printf("  Successor ID=%d\n", node.SuccessorID)
+		} else {
+			fmt.Println("  Successor: None")
 		}
 	}
 }
+
 
 // RemoveNode 从一致性哈希环中移除节点
 func (ring *ConsistentHashRing) RemoveNode(nodeID uint64) {
@@ -137,48 +146,3 @@ func (ring *ConsistentHashRing) RemoveNode(nodeID uint64) {
 
 	// 像后继节点发起文件请求，把对应的文件保存到自己的hydfs中，
 }
-
-// ---------------------------Basic file operations---------------------
-// Create
-// func create(localFilename, hyDFSFilename string) error {
-// 	content, err := ioutil.ReadFile(localFilename)
-// 	if err != nil {
-// 		return fmt.Errorf("error reading local file: %v", err)
-// 	}
-// 	server := getTargetServer(hyDFSFilename)
-// 	send1 := sendFile(*server, hyDFSFilename, content)
-// 	send2 := sendFile(*server.Successor, hyDFSFilename, content)
-// 	send3 := sendFile(*server.Successor.Successor, hyDFSFilename, content)
-// 	if send1 != nil || send2 != nil || send3 != nil {
-// 		return fmt.Errorf("sendFile errors: send1: %v, send2: %v, send3: %v", send1, send2, send3)
-// 	} else {
-// 		return nil
-// 	}
-// }
-
-// Get (fetch)
-// func get(hyDFSFilename, localFilename string) error {
-// 	server := getTargetServer(hyDFSFilename)
-// 	content, err := fetchFile(*server, hyDFSFilename)
-// 	if err != nil {
-// 		return fmt.Errorf("error fetching file: %v", err)
-// 	}
-// 	return ioutil.WriteFile(localFilename, content, 0644)
-// }
-
-// Append
-// func appendFile(localFilename, hyDFSFilename string) error {
-// 	content, err := ioutil.ReadFile(localFilename)
-// 	if err != nil {
-// 		return fmt.Errorf("error reading local file: %v", err)
-// 	}
-// 	server := getTargetServer(hyDFSFilename)
-// 	append1 := sendAppend(*server, hyDFSFilename, content)
-// 	append2 := sendAppend(*server.Successor, hyDFSFilename, content)
-// 	append3 := sendAppend(*server.Successor.Successor, hyDFSFilename, content)
-// 	if append1 != nil || append2 != nil || append3 != nil {
-// 		return fmt.Errorf("sendFile errors: append1: %v, append2: %v, append3: %v", append1, append2, append3)
-// 	} else {
-// 		return nil
-// 	}
-// }

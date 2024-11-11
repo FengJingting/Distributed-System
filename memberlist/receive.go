@@ -35,7 +35,7 @@ func ListenAndReply(port string) {
 		}
 
 		receivedMessage := string(buf[:n])
-		//fmt.Printf("Received message from %s: %s\n", remoteAddr.String(), receivedMessage)
+		fmt.Printf("Received message from %s: %s\n", remoteAddr.String(), receivedMessage)
 		// Parse the received message into an array (split by "+")
 		messageParts := strings.Split(receivedMessage, "+")
 
@@ -129,6 +129,7 @@ func ListenAndReply(port string) {
 
 // addNode 初始化并添加新节点到 alive 列表中
 func AddNode(ip string, port string) {
+	fmt.Println("_________Add Node___________")
 	ID := utils.Hash(ip+port)
     node := &cassandra.Node{
         ID:        ID,
@@ -139,7 +140,7 @@ func AddNode(ip string, port string) {
     // 将新节点添加到 memberlist 的 alive 列表中
     cassandra.CountMutex.Lock()
     defer cassandra.CountMutex.Unlock()
-
+	fmt.Println("cassandra.Memberlist",cassandra.Memberlist)
     cassandra.Memberlist["alive"] = append(cassandra.Memberlist["alive"], *node)
     fmt.Printf("Node added to 'alive': ID=%d, IP=%s, Port=%s, Timestamp=%d\n", node.ID, node.IP, node.Port, node.Timestamp)
     

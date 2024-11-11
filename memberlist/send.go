@@ -33,10 +33,15 @@ func send_update_whole(status string, selfIP string) {
 		return
 	}
 
-	// 2. Remove cyclic references in ring
-	for _, node := range cassandra.Ring.Nodes {
-		node.Predecessor = nil
-		node.Successor = nil
+	// 2. Temporarily remove PredecessorID and SuccessorID to avoid cyclic references
+	originalPredecessorIDs := make(map[uint64]uint64)
+	originalSuccessorIDs := make(map[uint64]uint64)
+
+	for id, node := range cassandra.Ring.Nodes {
+		originalPredecessorIDs[id] = node.PredecessorID
+		originalSuccessorIDs[id] = node.SuccessorID
+		node.PredecessorID = 0
+		node.SuccessorID = 0
 	}
 
 	// 3. Serialize ring
@@ -46,10 +51,13 @@ func send_update_whole(status string, selfIP string) {
 		return
 	}
 
-	// 4. Restore Predecessor and Successor pointers for all nodes in the ring
-	cassandra.Ring.UpdatePredecessorsAndSuccessors() // 调用恢复前驱和后继的方法
+	// 4. Restore PredecessorID and SuccessorID after serialization
+	for id, node := range cassandra.Ring.Nodes {
+		node.PredecessorID = originalPredecessorIDs[id]
+		node.SuccessorID = originalSuccessorIDs[id]
+	}
 
-	// 5. Send message with memberlist and ring
+	// 5. Send message with serialized memberlist and ring
 	message := fmt.Sprintf("update+%s+%s", string(jsonMemberlist), string(jsonRing))
 	for _, node := range cassandra.Memberlist["alive"] {
 		if node.IP != selfIP {
@@ -58,6 +66,7 @@ func send_update_whole(status string, selfIP string) {
 	}
 	return
 }
+
 
 
 func send_ping(ip, port string, t float64) bool {

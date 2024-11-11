@@ -45,7 +45,8 @@ func getServerByID(serverID uint64) *cassandra.Node {
 func lsHyDFSfilename(filename string) []string {
     var result []string
     server := getTargetServer(filename)
-    fmt.Printf("server",server)
+    fmt.Printf("Server: %v\n", server)
+
     for i := 0; i < 3; i++ {
         if server == nil {
             fmt.Println("Server not found.")
@@ -54,6 +55,8 @@ func lsHyDFSfilename(filename string) []string {
 
         serverAddr := server.IP
         serverID := fmt.Sprintf("%d", server.ID)
+        
+        // 尝试从服务器获取文件内容
         content, err := FetchFile(*server, filename)
         if err == nil && content != nil {
             result = append(result, fmt.Sprintf("VM Address: %s, VM ID: %s", serverAddr, serverID))
@@ -61,17 +64,18 @@ func lsHyDFSfilename(filename string) []string {
             fmt.Printf("File not found on server: %s (ID: %s)\n", serverAddr, serverID)
         }
 
-        // Fetch the next server using server.Successor.ID
-        if server.Successor != nil {
-            server = getServerByID(server.Successor.ID)
+        // 使用 SuccessorID 获取下一个服务器
+        if server.SuccessorID != 0 {
+            server = getServerByID(server.SuccessorID)
         } else {
             break
         }
     }
-    
-    fmt.Println("Get_server")
+
+    fmt.Println("Finished fetching servers for", filename)
     return result
 }
+
 
 // 测试通过
 func Store() {

@@ -20,12 +20,12 @@ type Config struct {
 
 // Node 结构体
 type Node struct {
-	ID          uint64     `json:"id"`
-	IP          string  `json:"domain"`  
-	Port        string  `json:"port"`  
-	Successor   *Node   `json:"successor,omitempty"`
-	Predecessor *Node   `json:"predecessor,omitempty"`
-	Timestamp   int     `json:"timestamp"`
+	ID          uint64 `json:"id"`
+	IP          string `json:"domain"`
+	Port        string `json:"port"`
+	SuccessorID uint64 `json:"successor,omitempty"`  // 改为存储后继节点的 ID
+	PredecessorID uint64 `json:"predecessor,omitempty"`  // 改为存储前驱节点的 ID
+	Timestamp   int    `json:"timestamp"`
 }
 
 

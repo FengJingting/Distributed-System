@@ -62,32 +62,34 @@ func List_mem_ids() {
 func List_self() {
     fmt.Println("list_self function called")
 
-    // 加锁以确保安全访问
+    // Ensure safe access by locking
     cassandra.Ring.Mutex.Lock()
     defer cassandra.Ring.Mutex.Unlock()
 
     found := false
     for state, nodes := range cassandra.Memberlist {
         for _, node := range nodes {
-            // 检查当前节点是否匹配本节点的 IP 地址
+            // Check if the current node matches the IP address of this node
             if node.IP == cassandra.Domain {
                 fmt.Printf("Found matching node in state '%s':\n", state)
                 fmt.Printf("  Node ID: %d\n  IP: %s\n  Port: %s\n  Timestamp: %d\n", 
                            node.ID, node.IP, node.Port, node.Timestamp)
 
-                // 获取前驱节点和后继节点信息
+                // Retrieve ringNode based on node's ID
                 ringNode := cassandra.Ring.Nodes[node.ID]
                 if ringNode != nil {
-                    if ringNode.Predecessor != nil {
+                    // Retrieve and print Predecessor information
+                    if pred, ok := cassandra.Ring.Nodes[ringNode.PredecessorID]; ok && ringNode.PredecessorID != 0 {
                         fmt.Printf("  Predecessor: ID=%d, IP=%s, Port=%s\n", 
-                                   ringNode.Predecessor.ID, ringNode.Predecessor.IP, ringNode.Predecessor.Port)
+                                   pred.ID, pred.IP, pred.Port)
                     } else {
                         fmt.Println("  Predecessor: None")
                     }
 
-                    if ringNode.Successor != nil {
+                    // Retrieve and print Successor information
+                    if succ, ok := cassandra.Ring.Nodes[ringNode.SuccessorID]; ok && ringNode.SuccessorID != 0 {
                         fmt.Printf("  Successor: ID=%d, IP=%s, Port=%s\n", 
-                                   ringNode.Successor.ID, ringNode.Successor.IP, ringNode.Successor.Port)
+                                   succ.ID, succ.IP, succ.Port)
                     } else {
                         fmt.Println("  Successor: None")
                     }
@@ -108,6 +110,7 @@ func List_self() {
         fmt.Println("No matching node found in any state")
     }
 }
+
 
 
 func Join() {
@@ -216,25 +219,38 @@ func performReplicaCheck() {
 
 func countReplicas(fileName string) int {
     count := 0
-    current, ok := cassandra.Ring.Nodes[utils.Hash(cassandra.Domain+cassandra.MemberPort)] // Use a consistent ID
+
+    // Get the starting node based on the current domain and port hash
+    current, ok := cassandra.Ring.Nodes[utils.Hash(cassandra.Domain+cassandra.MemberPort)]
     if !ok {
         fmt.Println("Error: Domain not found in ring nodes")
         return 0
     }
-    fmt.Println("Domain found",current)
+    fmt.Println("Domain found", current)
+
+    // Check up to 3 replicas in the ring
     for i := 0; i < 3; i++ {
         if current == nil {
             break
         }
         fmt.Println(current)
+        
         if fileExistsOnNode(current, fileName) {
             fmt.Println("count ++")
             count++
         }
-        current = current.Successor
+
+        // Move to the next successor using SuccessorID
+        if next, ok := cassandra.Ring.Nodes[current.SuccessorID]; ok && current.SuccessorID != 0 {
+            current = next
+        } else {
+            // No more successors to check
+            break
+        }
     }
     return count
 }
+
 
 // Helper function to check if a file exists on a given node
 func fileExistsOnNode(node *cassandra.Node, fileName string) bool {
@@ -249,105 +265,119 @@ func replicateFileToSuccessors(fileName string, replicasNeeded int) {
         return
     }
 
+    // Get the starting node based on the current domain and port hash
     current, ok := cassandra.Ring.Nodes[utils.Hash(cassandra.Domain+cassandra.MemberPort)]
     if !ok {
         fmt.Println("Error: Domain not found in ring nodes")
         return
     }
-    current = current.Successor
 
+    // Loop to replicate to successors
     for replicasNeeded > 0 && current != nil {
         if !fileExistsOnNode(current, fileName) {
+            // Attempt to replicate the file
             err := file.SendFile(*current, fileName, content)
             if err != nil {
-                fmt.Println("Error replicating file to node:", current.ID, err)
+                fmt.Printf("Error replicating file %s to node %d: %v\n", fileName, current.ID, err)
             } else {
                 replicasNeeded--
                 fmt.Printf("File %s replicated to node %d\n", fileName, current.ID)
             }
         }
-        current = current.Successor
+
+        // Move to the next successor using SuccessorID
+        if next, ok := cassandra.Ring.Nodes[current.SuccessorID]; ok && current.SuccessorID != 0 {
+            current = next
+        } else {
+            // No more successors to check
+            break
+        }
+    }
+
+    if replicasNeeded > 0 {
+        fmt.Printf("Warning: Only %d replicas created for file %s, not enough nodes available.\n", 3-replicasNeeded, fileName)
     }
 }
 
+
 func Write_to_log() {
-	// 打开或创建日志文件，以追加模式写入
-	logFile, err := os.OpenFile("memberlist.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		fmt.Println("Error opening/creating log file:", err)
-		return
-	}
-	defer logFile.Close()
+	// // 打开或创建日志文件，以追加模式写入
+	// logFile, err := os.OpenFile("memberlist.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	// if err != nil {
+	// 	fmt.Println("Error opening/creating log file:", err)
+	// 	return
+	// }
+	// defer logFile.Close()
 
-	// 获取当前时间作为日志条目的时间戳
-	currentTime := time.Now().Format("2006-01-02 15:04:05")
+	// // 获取当前时间作为日志条目的时间戳
+	// currentTime := time.Now().Format("2006-01-02 15:04:05")
 
-	// 写入日志条目的时间戳
-	_, err = fmt.Fprintf(logFile, "Log Timestamp: %s\n", currentTime)
-	if err != nil {
-		fmt.Println("Error writing timestamp to log file:", err)
-		return
-	}
+	// // 写入日志条目的时间戳
+	// _, err = fmt.Fprintf(logFile, "Log Timestamp: %s\n", currentTime)
+	// if err != nil {
+	// 	fmt.Println("Error writing timestamp to log file:", err)
+	// 	return
+	// }
 
-	// 写入 `memberlist` 数据
-	_, err = fmt.Fprintln(logFile, "Memberlist:")
-	if err != nil {
-		fmt.Println("Error writing memberlist header to log file:", err)
-		return
-	}
-	for status, nodes := range cassandra.Memberlist {
-		for _, node := range nodes {
-			_, err := fmt.Fprintf(logFile, "[%s] Status: %s, Node ID: %d, IP: %s, Port: %s, Timestamp: %d\n",
-				currentTime, status, node.ID, node.IP, node.Port, node.Timestamp)
-			if err != nil {
-				fmt.Println("Error writing node status to log file:", err)
-				return
-			}
-		}
-	}
+	// // 写入 `memberlist` 数据
+	// _, err = fmt.Fprintln(logFile, "Memberlist:")
+	// if err != nil {
+	// 	fmt.Println("Error writing memberlist header to log file:", err)
+	// 	return
+	// }
+	// for status, nodes := range cassandra.Memberlist {
+	// 	for _, node := range nodes {
+	// 		_, err := fmt.Fprintf(logFile, "[%s] Status: %s, Node ID: %d, IP: %s, Port: %s, Timestamp: %d\n",
+	// 			currentTime, status, node.ID, node.IP, node.Port, node.Timestamp)
+	// 		if err != nil {
+	// 			fmt.Println("Error writing node status to log file:", err)
+	// 			return
+	// 		}
+	// 	}
+	// }
 
-	// 写入 `ring` 数据
-	_, err = fmt.Fprintln(logFile, "Ring:")
-	if err != nil {
-		fmt.Println("Error writing ring header to log file:", err)
-		return
-	}
-	cassandra.Ring.Mutex.Lock()
-	defer cassandra.Ring.Mutex.Unlock()
+	// // 写入 `ring` 数据
+	// _, err = fmt.Fprintln(logFile, "Ring:")
+	// if err != nil {
+	// 	fmt.Println("Error writing ring header to log file:", err)
+	// 	return
+	// }
+	// cassandra.Ring.Mutex.Lock()
+	// defer cassandra.Ring.Mutex.Unlock()
 
-	for _, hash := range cassandra.Ring.SortedHashes {
-		node := cassandra.Ring.Nodes[hash]
-		_, err = fmt.Fprintf(logFile, "Node ID: %d, IP: %s, Port: %s, ", node.ID, node.IP, node.Port)
-		if err != nil {
-			fmt.Println("Error writing ring node data to log file:", err)
-			return
-		}
-		// 写入前驱和后继节点信息
-		if node.Predecessor != nil {
-			_, err = fmt.Fprintf(logFile, "Predecessor ID: %d, ", node.Predecessor.ID)
-			if err != nil {
-				fmt.Println("Error writing predecessor to log file:", err)
-				return
-			}
-		} else {
-			_, err = fmt.Fprint(logFile, "Predecessor ID: nil, ")
-		}
-		if node.Successor != nil {
-			_, err = fmt.Fprintf(logFile, "Successor ID: %d\n", node.Successor.ID)
-			if err != nil {
-				fmt.Println("Error writing successor to log file:", err)
-				return
-			}
-		} else {
-			_, err = fmt.Fprintln(logFile, "Successor ID: nil")
-		}
-	}
+	// for _, hash := range cassandra.Ring.SortedHashes {
+	// 	node := cassandra.Ring.Nodes[hash]
+	// 	_, err = fmt.Fprintf(logFile, "Node ID: %d, IP: %s, Port: %s, ", node.ID, node.IP, node.Port)
+	// 	if err != nil {
+	// 		fmt.Println("Error writing ring node data to log file:", err)
+	// 		return
+	// 	}
+	// 	// 写入前驱和后继节点信息
+	// 	if node.Predecessor != nil {
+	// 		_, err = fmt.Fprintf(logFile, "Predecessor ID: %d, ", node.Predecessor.ID)
+	// 		if err != nil {
+	// 			fmt.Println("Error writing predecessor to log file:", err)
+	// 			return
+	// 		}
+	// 	} else {
+	// 		_, err = fmt.Fprint(logFile, "Predecessor ID: nil, ")
+	// 	}
+	// 	if node.Successor != nil {
+	// 		_, err = fmt.Fprintf(logFile, "Successor ID: %d\n", node.Successor.ID)
+	// 		if err != nil {
+	// 			fmt.Println("Error writing successor to log file:", err)
+	// 			return
+	// 		}
+	// 	} else {
+	// 		_, err = fmt.Fprintln(logFile, "Successor ID: nil")
+	// 	}
+	// }
 
-	// 添加分隔线来区分不同时间的日志
-	_, err = fmt.Fprintln(logFile, "---------------------------")
-	if err != nil {
-		fmt.Println("Error writing separator to log file:", err)
-	}
+	// // 添加分隔线来区分不同时间的日志
+	// _, err = fmt.Fprintln(logFile, "---------------------------")
+	// if err != nil {
+	// 	fmt.Println("Error writing separator to log file:", err)
+	// }
 
 	fmt.Println("Memberlist and Ring successfully written to log.")
 }

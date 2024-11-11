@@ -10,7 +10,7 @@ import (
 	//"time"
 	"bufio"
 	"io/ioutil"
-	"log"
+	// "log"
 	"mp3/cassandra"
 	"mp3/utils"
 	"strconv"
@@ -97,10 +97,13 @@ func getTargetServer(filename string) *cassandra.Node {
 	}
 
 	for _, node := range nodes {
+		// Fetch the predecessor node using the PredecessorID
+		predecessorNode := cassandra.Ring.Nodes[node.PredecessorID]
+
 		// Case 1: Normal range where hash falls between predecessor and current node
-		if node.Predecessor != nil &&
-			((uint64(node.Predecessor.ID) < hashValue && uint64(node.ID) >= hashValue) ||
-				(uint64(node.Predecessor.ID) > uint64(node.ID) && (hashValue >= uint64(node.Predecessor.ID) || hashValue < uint64(node.ID)))) {
+		if predecessorNode != nil &&
+			((uint64(predecessorNode.ID) < hashValue && uint64(node.ID) >= hashValue) ||
+				(uint64(predecessorNode.ID) > uint64(node.ID) && (hashValue >= uint64(predecessorNode.ID) || hashValue < uint64(node.ID)))) {
 			return cassandra.Ring.Nodes[node.ID]
 		}
 	}
@@ -109,6 +112,7 @@ func getTargetServer(filename string) *cassandra.Node {
 	// it belongs to the first node in the sorted list
 	return cassandra.Ring.Nodes[nodes[0].ID]
 }
+
 
 func FetchFileWithTimestamp(node cassandra.Node, filename string) ([]byte, int64, error) {
 	address := node.IP + ":" + cassandra.FilePort
@@ -259,41 +263,6 @@ func sendAppend(node cassandra.Node, filename string, content []byte) error {
 	return nil
 }
 
-// ---------------------------Basic file operations---------------------
-// Create
-// func Create(localFilename, hyDFSFilename string, continueAfterQuorum bool) error {
-// 	fmt.Println("------------send_create-------------")
-// 	localFilepath := LocalDir + localFilename
-// 	content, err := ioutil.ReadFile(localFilepath)
-// 	if err != nil {
-// 		return fmt.Errorf("error reading local file: %v", err)
-// 	}
-// 	server := getTargetServer(hyDFSFilename)
-// 	fmt.Println("server",server)
-// 	successCount := 0
-// 	servers := []*cassandra.Node{server, server.Successor, server.Successor.Successor}
-// 	fmt.Println(servers)
-// 	for _, srv := range servers {
-// 		if srv == nil {
-// 			continue
-// 		}
-// 		if err := SendFile(*srv, hyDFSFilename, content); err == nil {
-// 			successCount++
-// 		}
-
-// 		// 如果达到 Quorum，且不需要继续写入剩余副本，则退出循环
-// 		if successCount >= W && !continueAfterQuorum {
-// 			fmt.Println("Write quorum reached")
-// 			return nil
-// 		}
-// 	}
-
-// 	if successCount >= W {
-// 		fmt.Println("Write quorum reached after writing all nodes")
-// 		return nil
-// 	}
-// 	return fmt.Errorf("write quorum not reached, only %d nodes succeeded", successCount)
-// }
 func Create(localFilename, hyDFSFilename string, continueAfterQuorum bool) error {
 	fmt.Println("------------send_create-------------")
 	localFilepath := LocalDir + localFilename
@@ -301,14 +270,25 @@ func Create(localFilename, hyDFSFilename string, continueAfterQuorum bool) error
 	if err != nil {
 		return fmt.Errorf("error reading local file: %v", err)
 	}
+
+	// Fetch the target server node
 	server := getTargetServer(hyDFSFilename)
-	fmt.Println("server", server)
+	if server == nil {
+		return fmt.Errorf("error finding target server for filename: %v", hyDFSFilename)
+	}
+	fmt.Println("Primary server:", server)
 
-	// Define servers to replicate the file
-	servers := []*cassandra.Node{server, server.Successor, server.Successor.Successor}
-	fmt.Println("servers:", servers)
+	// Retrieve successors using the SuccessorID fields
+	servers := []*cassandra.Node{server}
+	if successor1, ok := cassandra.Ring.Nodes[server.SuccessorID]; ok {
+		servers = append(servers, successor1)
+		if successor2, ok := cassandra.Ring.Nodes[successor1.SuccessorID]; ok {
+			servers = append(servers, successor2)
+		}
+	}
+	fmt.Println("Servers for replication:", servers)
 
-	// Use a wait group to manage goroutines
+	// Use a wait group to manage concurrent writes
 	var wg sync.WaitGroup
 	// Channel to capture successful writes
 	successChan := make(chan struct{}, len(servers))
@@ -365,43 +345,28 @@ func Create(localFilename, hyDFSFilename string, continueAfterQuorum bool) error
 	}
 	return fmt.Errorf("write quorum not reached, only %d nodes succeeded", successCount)
 }
-// func Create(localFilename, hyDFSFilename string) error {
-// 	fmt.Println("------------send_create-------------")
-// 	localFilepath := LocalDir + localFilename
-// 	content, err := ioutil.ReadFile(localFilepath)
-// 	if err != nil {
-// 		return fmt.Errorf("error reading local file: %v", err)
-// 	}
-// 	server := getTargetServer(hyDFSFilename)
-
-// 	successCount := 0
-// 	servers := []*cassandra.Node{server, server.Successor, server.Successor.Successor}
-
-// 	for _, srv := range servers {
-// 		if srv == nil {
-// 			continue
-// 		}
-// 		if err := SendFile(*srv, hyDFSFilename, content); err == nil {
-// 			successCount++
-// 		}
-// 		if successCount >= W {
-// 			fmt.Println("Write quorum reached")
-// 			return nil
-// 		}
-// 	}
-// 	return fmt.Errorf("write quorum not reached, only %d nodes succeeded", successCount)
-// }
 
 // Get (fetch)
 func Get(hyDFSFilename, localFilename string) error {
 	fmt.Println("------------send_get-------------")
 	server := getTargetServer(hyDFSFilename)
+	if server == nil {
+		return fmt.Errorf("error finding target server for filename: %v", hyDFSFilename)
+	}
 
 	var latestContent []byte
 	var latestTimestamp int64
 	successCount := 0
 
-	servers := []*cassandra.Node{server, server.Successor, server.Successor.Successor}
+	// Retrieve successors using the SuccessorID fields
+	servers := []*cassandra.Node{server}
+	if successor1, ok := cassandra.Ring.Nodes[server.SuccessorID]; ok {
+		servers = append(servers, successor1)
+		if successor2, ok := cassandra.Ring.Nodes[successor1.SuccessorID]; ok {
+			servers = append(servers, successor2)
+		}
+	}
+	fmt.Println("Servers for reading:", servers)
 
 	for _, srv := range servers {
 		if srv == nil {
@@ -424,35 +389,53 @@ func Get(hyDFSFilename, localFilename string) error {
 	return fmt.Errorf("read quorum not reached, only %d nodes succeeded", successCount)
 }
 
+
 // Append
-func Append(localFilename, hyDFSFilename string, continueAfterQuorum bool) error {
+func Append(localFilename, hyDFSFilename string, continueAfterQuorum bool) error { 
 	fmt.Println("------------send_append-------------")
 	localFilepath := LocalDir + localFilename
 	content, err := ioutil.ReadFile(localFilepath)
 	if err != nil {
 		return fmt.Errorf("error reading local file: %v", err)
 	}
+	
+	// Get the target server for the file
 	server := getTargetServer(hyDFSFilename)
+	if server == nil {
+		return fmt.Errorf("error finding target server for filename: %v", hyDFSFilename)
+	}
 
+	// Define servers to which the append operation should be applied
+	servers := []*cassandra.Node{server}
+
+	// Retrieve successors using SuccessorID fields
+	if successor1, ok := cassandra.Ring.Nodes[server.SuccessorID]; ok {
+		servers = append(servers, successor1)
+		if successor2, ok := cassandra.Ring.Nodes[successor1.SuccessorID]; ok {
+			servers = append(servers, successor2)
+		}
+	}
+	fmt.Println("Servers for appending:", servers)
+
+	// Initialize success count and loop through servers
 	successCount := 0
-	servers := []*cassandra.Node{server, server.Successor, server.Successor.Successor}
-
 	for _, srv := range servers {
 		if srv == nil {
 			continue
 		}
+		// Attempt to append content to the current server
 		if err := sendAppend(*srv, hyDFSFilename, content); err == nil {
 			successCount++
 		}
 
-		// 如果达到 Quorum 且不需要继续写入剩余副本，则退出循环
+		// If quorum is reached and continueAfterQuorum is false, exit early
 		if successCount >= W && !continueAfterQuorum {
 			fmt.Println("Append quorum reached")
 			return nil
 		}
 	}
 
-	// 确认 Quorum 达成或写入完成
+	// Final quorum check after all append attempts
 	if successCount >= W {
 		fmt.Println("Append quorum reached after writing all nodes")
 		return nil
@@ -460,32 +443,6 @@ func Append(localFilename, hyDFSFilename string, continueAfterQuorum bool) error
 	return fmt.Errorf("append quorum not reached, only %d nodes succeeded", successCount)
 }
 
-// func Append(localFilename, hyDFSFilename string) error {
-// 	fmt.Println("------------send_append-------------")
-// 	localFilepath := LocalDir + localFilename
-// 	content, err := ioutil.ReadFile(localFilepath)
-// 	if err != nil {
-// 		return fmt.Errorf("error reading local file: %v", err)
-// 	}
-// 	server := getTargetServer(hyDFSFilename)
-
-// 	successCount := 0
-// 	servers := []*cassandra.Node{server, server.Successor, server.Successor.Successor}
-
-// 	for _, srv := range servers {
-// 		if srv == nil {
-// 			continue
-// 		}
-// 		if err := sendAppend(*srv, hyDFSFilename, content); err == nil {
-// 			successCount++
-// 		}
-// 		if successCount >= W {
-// 			fmt.Println("Write quorum reached")
-// 			return nil
-// 		}
-// 	}
-// 	return fmt.Errorf("write quorum not reached, only %d nodes succeeded", successCount)
-// }
 
 func Merge() {
 	fmt.Println("------------send_merge-------------")
@@ -502,46 +459,46 @@ func Merge() {
 // multiappend 函数：提示用户输入文件名、虚拟机地址和本地文件名，并进行并发的追加操作
 func MultiAppend(filename string, vmAddresses []string, localFilenames []string) error {
 	// 检查输入是否匹配
-	if len(vmAddresses) != len(localFilenames) {
-		return fmt.Errorf("number of VM addresses and local filenames must be the same")
-	}
+	// if len(vmAddresses) != len(localFilenames) {
+	// 	return fmt.Errorf("number of VM addresses and local filenames must be the same")
+	// }
 
-	// 创建等待组，用于等待所有并发操作完成
-	var wg sync.WaitGroup
+	// // 创建等待组，用于等待所有并发操作完成
+	// var wg sync.WaitGroup
 
-	// 遍历虚拟机地址和对应的本地文件名
-	for i, addr := range vmAddresses {
-		localFilename := LocalDir + localFilenames[i]
-		fmt.Println("hello", localFilename)
+	// // 遍历虚拟机地址和对应的本地文件名
+	// for i, addr := range vmAddresses {
+	// 	localFilename := LocalDir + localFilenames[i]
+	// 	fmt.Println("hello", localFilename)
 
-		// 读取本地文件内容
-		content, err := ioutil.ReadFile(localFilename)
-		if err != nil {
-			log.Printf("Error reading file %s: %v", localFilename, err)
-			continue
-		}
+	// 	// 读取本地文件内容
+	// 	content, err := ioutil.ReadFile(localFilename)
+	// 	if err != nil {
+	// 		log.Printf("Error reading file %s: %v", localFilename, err)
+	// 		continue
+	// 	}
 
-		// 创建节点信息
-		node := cassandra.Node{IP: addr} // 假设所有节点使用相同端口
+	// 	// 创建节点信息
+	// 	node := cassandra.Node{IP: addr} // 假设所有节点使用相同端口
 
-		// 增加等待组计数器
-		wg.Add(1)
+	// 	// 增加等待组计数器
+	// 	wg.Add(1)
 
-		filepath := filename
-		// 并发执行 append 操作
-		go func(n cassandra.Node, f string, c []byte) {
-			defer wg.Done()
-			err := sendAppend(n, f, c)
-			if err != nil {
-				fmt.Printf("Failed to append to %s on %s: %v\n", f, n.IP, err)
-			} else {
-				fmt.Printf("Successfully appended to %s on %s\n", f, n.IP)
-			}
-		}(node, filepath, content)
-	}
+	// 	filepath := filename
+	// 	// 并发执行 append 操作
+	// 	go func(n cassandra.Node, f string, c []byte) {
+	// 		defer wg.Done()
+	// 		err := sendAppend(n, f, c)
+	// 		if err != nil {
+	// 			fmt.Printf("Failed to append to %s on %s: %v\n", f, n.IP, err)
+	// 		} else {
+	// 			fmt.Printf("Successfully appended to %s on %s\n", f, n.IP)
+	// 		}
+	// 	}(node, filepath, content)
+	// }
 
-	// 等待所有并发任务完成
-	wg.Wait()
-	fmt.Println("Multi-append operation completed.")
+	// // 等待所有并发任务完成
+	// wg.Wait()
+	// fmt.Println("Multi-append operation completed.")
 	return nil
 }
