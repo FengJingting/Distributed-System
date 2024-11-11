@@ -36,7 +36,7 @@ func ListenAndReply(port string) {
 		}
 
 		receivedMessage := string(buf[:n])
-		fmt.Printf("Received message from %s: %s\n", remoteAddr.String(), receivedMessage)
+		//fmt.Printf("Received message from %s: %s\n", remoteAddr.String(), receivedMessage)
 		// Parse the received message into an array (split by "+")
 		messageParts := strings.Split(receivedMessage, "+")
 

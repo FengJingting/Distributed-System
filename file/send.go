@@ -398,7 +398,9 @@ func Get(hyDFSFilename, localFilename string) error {
 // Append
 func Append(localFilename, hyDFSFilename string, continueAfterQuorum bool) error {
 	fmt.Println("------------send_append-------------")
-	localFilepath := LocalDir + localFilename
+	hyDFSFilename = strings.TrimSpace(hyDFSFilename)
+	localFilepath := LocalDir + hyDFSFilename
+	// fmt.Println("localFilepath",localFilepath,"localFilepath")
 	content, err := ioutil.ReadFile(localFilepath)
 	if err != nil {
 		return fmt.Errorf("error reading local file: %v", err)
