@@ -45,29 +45,48 @@ func getServerByID(serverID uint64) *cassandra.Node {
 func lsHyDFSfilename(filename string) []string {
     var result []string
     server := getTargetServer(filename)
-    fmt.Printf("Server: %v\n", server)
+    fmt.Printf("Starting Server: %v\n", server)
 
-    for i := 0; i < 3; i++ {
-        if server == nil {
-            fmt.Println("Server not found.")
-            break
-        }
+    if server == nil {
+        fmt.Println("No initial server found.")
+        return result
+    }
 
+    // Store the initial server ID to detect when we've looped back to the start
+    startServerID := server.ID
+    replicaCount := 0
+
+    // Traverse the ring until we find three replicas or return to the starting server
+    for {
         serverAddr := server.IP
         serverID := fmt.Sprintf("%d", server.ID)
         
         // Try to retrieve file content from the server
-        content, err := FetchFile(*server, filename)
-        if err == nil && content != nil {
+        content, _, err := FetchFileWithTimestamp(*server, filename)
+        fmt.Println("Content:", content)
+        if err == nil && content != nil && len(content) > 0 {
             result = append(result, fmt.Sprintf("VM Address: %s, VM ID: %s", serverAddr, serverID))
+            replicaCount++
         } else {
             fmt.Printf("File not found on server: %s (ID: %s)\n", serverAddr, serverID)
         }
 
-        // Use SuccessorID to get the next server
+        // Stop if we've found three replicas
+        if replicaCount >= 3 {
+            break
+        }
+
+        // Move to the next server using SuccessorID
         if server.SuccessorID != 0 {
             server = getServerByID(server.SuccessorID)
+            // Check if we've looped back to the starting server
+            if server.ID == startServerID {
+                fmt.Println("Looped back to the starting server. Ending search.")
+                break
+            }
         } else {
+            // If there's no successor, we've reached the end of the ring
+            fmt.Println("No successor found. Reached end of the ring.")
             break
         }
     }
@@ -75,6 +94,7 @@ func lsHyDFSfilename(filename string) []string {
     fmt.Println("Finished fetching servers for", filename)
     return result
 }
+
 
 // Test passed
 func Store() {
@@ -144,19 +164,20 @@ func Getfromreplica() {
     }
 
     // Fetch the file from the server
-    content, err := FetchFile(*server, hyDFSfilename)
-    if err != nil {
+    content, _, err := FetchFileWithTimestamp(*server, hyDFSfilename)
+    fmt.Println("Content fetched:", content)
+    if err == nil && content != nil && len(content) > 0 {
+        // Save the content to the specified local file path
+        localFilepath := LocalDir + "/" + localfilename
+        err = ioutil.WriteFile(localFilepath, content, 0644)
+        if err != nil {
+            fmt.Printf("Error writing to local file: %v\n", err)
+            return
+        }
+        fmt.Println("File saved at:", localFilepath)
+    } else {
         fmt.Printf("Error fetching file: %v\n", err)
         return
     }
-    fmt.Println("Content fetched:", content)
-
-    // Save the content to the specified local file path
-    localFilepath := LocalDir + "/" + localfilename
-    err = ioutil.WriteFile(localFilepath, content, 0644)
-    if err != nil {
-        fmt.Printf("Error writing to local file: %v\n", err)
-        return
-    }
-    fmt.Println("File saved at:", localFilepath)
+ 
 }
