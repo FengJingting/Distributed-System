@@ -61,8 +61,9 @@ func main() {
 			file.Create(fields[1], fields[2], true) // default: continue after quorum
 
 		case "get":
-			if len(fields) < 2 {
-				fmt.Println("Usage: get <filename>")
+			fmt.Println(fields)
+			if len(fields) < 3 {
+				fmt.Println("Usage: get <dfs> <local>")
 				continue
 			}
 			file.Get(fields[1], fields[2])

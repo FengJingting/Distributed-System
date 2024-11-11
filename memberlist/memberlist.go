@@ -54,10 +54,24 @@ func List_mem_ids() {
         }
 
         // 打印节点的状态、ID、IP 和端口
-        fmt.Printf("Status: %s, Node ID: %d, IP: %s, Port: %s\n", 
-                    nodeStatus, nodeHash, node.IP, node.Port)
+        fmt.Printf("Status: %s, Node ID: %d, IP: %s, Port: %s\n", nodeStatus, nodeHash, node.IP, node.Port)
+
+        // 获取并打印前驱节点信息
+        if predecessorNode, ok := cassandra.Ring.Nodes[node.PredecessorID]; ok && node.PredecessorID != 0 {
+            fmt.Printf("  Predecessor: ID=%d, IP=%s, Port=%s\n", predecessorNode.ID, predecessorNode.IP, predecessorNode.Port)
+        } else {
+            fmt.Println("  Predecessor: None")
+        }
+
+        // 获取并打印后继节点信息
+        if successorNode, ok := cassandra.Ring.Nodes[node.SuccessorID]; ok && node.SuccessorID != 0 {
+            fmt.Printf("  Successor: ID=%d, IP=%s, Port=%s\n", successorNode.ID, successorNode.IP, successorNode.Port)
+        } else {
+            fmt.Println("  Successor: None")
+        }
     }
 }
+
 
 func List_self() {
     fmt.Println("list_self function called")

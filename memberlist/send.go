@@ -33,31 +33,25 @@ func send_update_whole(status string, selfIP string) {
 		return
 	}
 
-	// 2. Temporarily remove PredecessorID and SuccessorID to avoid cyclic references
-	originalPredecessorIDs := make(map[uint64]uint64)
-	originalSuccessorIDs := make(map[uint64]uint64)
-
+	// 2. Create a copy of the ring with zeroed PredecessorID and SuccessorID
+	ringCopy := &cassandra.ConsistentHashRing{
+		Nodes:        make(map[uint64]*cassandra.Node),
+		SortedHashes: cassandra.Ring.SortedHashes,
+	}
 	for id, node := range cassandra.Ring.Nodes {
-		originalPredecessorIDs[id] = node.PredecessorID
-		originalSuccessorIDs[id] = node.SuccessorID
-		node.PredecessorID = 0
-		node.SuccessorID = 0
+		// Make a shallow copy of each node with PredecessorID and SuccessorID set to zero
+		nodeCopy := *node
+		ringCopy.Nodes[id] = &nodeCopy
 	}
 
-	// 3. Serialize ring
-	jsonRing, err := json.Marshal(cassandra.Ring)
+	// 3. Serialize ring copy
+	jsonRing, err := json.Marshal(ringCopy)
 	if err != nil {
 		fmt.Println("Error encoding ring JSON:", err)
 		return
 	}
 
-	// 4. Restore PredecessorID and SuccessorID after serialization
-	for id, node := range cassandra.Ring.Nodes {
-		node.PredecessorID = originalPredecessorIDs[id]
-		node.SuccessorID = originalSuccessorIDs[id]
-	}
-
-	// 5. Send message with serialized memberlist and ring
+	// 4. Send message with serialized memberlist and ring
 	message := fmt.Sprintf("update+%s+%s", string(jsonMemberlist), string(jsonRing))
 	for _, node := range cassandra.Memberlist["alive"] {
 		if node.IP != selfIP {
@@ -66,7 +60,6 @@ func send_update_whole(status string, selfIP string) {
 	}
 	return
 }
-
 
 
 func send_ping(ip, port string, t float64) bool {
