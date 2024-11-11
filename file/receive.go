@@ -46,12 +46,12 @@ func HandleFileOperation(conn net.Conn) error {
 		fmt.Println(content)
 		fmt.Printf("File %s read and sent back successfully\n", filename)
 
-	case "CREATE": 
+	case "CREATE":
 		fmt.Println("------------receive_create-------------")
-	
+
 		// Construct file path
 		filepath := DfsDir + filename
-	
+
 		// Check if the file already exists locally
 		if _, err := os.Stat(filepath); err == nil {
 			// File exists, no need to write, directly return success message
@@ -59,7 +59,7 @@ func HandleFileOperation(conn net.Conn) error {
 			conn.Write([]byte("OK\n")) // Send success message
 			return nil
 		}
-	
+
 		// Read file size
 		var fileSize int64
 		_, err := fmt.Fscanf(reader, "%d\n", &fileSize)
@@ -67,7 +67,7 @@ func HandleFileOperation(conn net.Conn) error {
 			conn.Write([]byte("ERROR reading file size\n")) // Send error message
 			return fmt.Errorf("error reading file size: %v", err)
 		}
-	
+
 		// Read file content
 		content := make([]byte, fileSize)
 		_, err = io.ReadFull(reader, content)
@@ -75,14 +75,14 @@ func HandleFileOperation(conn net.Conn) error {
 			conn.Write([]byte("ERROR reading file content\n")) // Send error message
 			return fmt.Errorf("error reading file content: %v", err)
 		}
-	
+
 		// Write to file
 		err = ioutil.WriteFile(filepath, content, 0644)
 		if err != nil {
 			conn.Write([]byte("ERROR writing file\n")) // Send error message
 			return fmt.Errorf("error creating file %s: %v", filename, err)
 		}
-	
+
 		fmt.Printf("File %s created successfully in local directory\n", filename)
 		conn.Write([]byte("OK\n")) // Send success message
 
@@ -117,6 +117,24 @@ func HandleFileOperation(conn net.Conn) error {
 		}
 		fmt.Printf("Content appended to file %s successfully\n", filename)
 		conn.Write([]byte("OK\n")) // Send success message
+
+	case "MULTIAPPEND":
+		fmt.Println("------------receive_multiappend-------------")
+		localFilename, err := reader.ReadString('\n')
+		fmt.Println("localFilename:", localFilename)
+		if err != nil {
+			return fmt.Errorf("error reading from connection: %v", err)
+		}
+
+		err = Append(localFilename, filename, true) //continueAfterQuorum default: true
+		if err != nil {
+			conn.Write([]byte("ERROR appending file\n")) // 发送错误消息
+			return fmt.Errorf("error appending file %s: %v", filename, err)
+		}
+
+		// 返回确认消息给 MultiAppend 发起方
+		conn.Write([]byte("OK\n"))
+		fmt.Printf("Content from %s appended to %s successfully\n", localFilename, filename)
 
 	default:
 		conn.Write([]byte("ERROR unknown operation\n")) // Send error message
