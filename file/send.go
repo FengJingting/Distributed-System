@@ -374,7 +374,7 @@ func Get(hyDFSFilename, localFilename string) error {
 			continue
 		}
 		content, timestamp, err := FetchFileWithTimestamp(*srv, hyDFSFilename)
-		
+
 		if err == nil {
 			successCount++
 			if timestamp > latestTimestamp {
@@ -445,16 +445,94 @@ func Append(localFilename, hyDFSFilename string, continueAfterQuorum bool) error
 	return fmt.Errorf("append quorum not reached, only %d nodes succeeded", successCount)
 }
 
-func Merge() {
-	fmt.Println("------------send_merge-------------")
-	// fmt.Print("Please enter the filename: ")
-	// reader := bufio.NewReader(os.Stdin)
-	// filename, _ := reader.ReadString('\n')
-	// filename = strings.TrimSpace(filename) // Remove newline and spaces
+func Merge(hyDFSFilename string) error {
+	fmt.Println("------------merge-------------")
+	server := getTargetServer(hyDFSFilename)
+	if server == nil {
+		return fmt.Errorf("error finding target server for filename: %v", hyDFSFilename)
+	}
 
-	// // Output or process the input filename
-	// fmt.Printf("The filename you entered is: %s\n", filename)
-	// TODO: merge operation
+	// Retrieve the list of servers
+	servers := []*cassandra.Node{server}
+	if successor1, ok := cassandra.Ring.Nodes[server.SuccessorID]; ok {
+		servers = append(servers, successor1)
+		if successor2, ok := cassandra.Ring.Nodes[successor1.SuccessorID]; ok {
+			servers = append(servers, successor2)
+		}
+	}
+	fmt.Println("Servers for merging:", servers)
+
+	// Fetch files from all servers
+	type fileReplica struct {
+		content []byte
+		node    *cassandra.Node
+	}
+
+	var replicas []fileReplica
+
+	for _, srv := range servers {
+		if srv == nil {
+			continue
+		}
+		content, err := FetchFileReplica(*srv, hyDFSFilename)
+		if err != nil {
+			fmt.Printf("Error fetching file from node %s: %v\n", srv.IP, err)
+			continue
+		}
+		replicas = append(replicas, fileReplica{content: content, node: srv})
+	}
+
+	if len(replicas) == 0 {
+		return fmt.Errorf("no replicas found for file %s", hyDFSFilename)
+	}
+
+	// Find the longest content
+	var longestContent []byte
+	longestLength := 0
+	for _, replica := range replicas {
+		if len(replica.content) > longestLength {
+			longestLength = len(replica.content)
+			longestContent = replica.content
+		}
+	}
+
+	// If all replicas are already identical, merge is a no-op
+	identicalCount := 0
+	for _, replica := range replicas {
+		if len(replica.content) == longestLength && string(replica.content) == string(longestContent) {
+			identicalCount++
+		}
+	}
+	if identicalCount == len(replicas) {
+		fmt.Println("All replicas are already identical. Merge completed immediately.")
+		return nil
+	}
+
+	// Send the longest content to all servers
+	for _, srv := range servers {
+		if srv == nil {
+			continue
+		}
+		// Only update nodes that don't have the longest content
+		content, err := FetchFileReplica(*srv, hyDFSFilename)
+		if err != nil {
+			fmt.Printf("Error fetching file from node %s: %v\n", srv.IP, err)
+			continue
+		}
+		if len(content) < longestLength || string(content) != string(longestContent) {
+			err := SendFile(*srv, hyDFSFilename, longestContent)
+			if err != nil {
+				fmt.Printf("Error sending file to node %s: %v\n", srv.IP, err)
+			} else {
+				fmt.Printf("Updated node %s with the longest content\n", srv.IP)
+			}
+		} else {
+			fmt.Printf("Node %s already has the longest content\n", srv.IP)
+		}
+	}
+
+	fmt.Println("Merge operation completed successfully for", hyDFSFilename)
+	return nil
 }
 
 // multiappend function: Prompts the user for a filename, VM address, and local filename, and performs concurrent append operations
