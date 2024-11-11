@@ -43,7 +43,7 @@ func HandleFileOperation(conn net.Conn) error {
 			return fmt.Errorf("error reading file %s: %v", filename, err)
 		}
 		conn.Write(content) // Send file content back to the client
-		fmt.Println(content)
+		//fmt.Println(content)
 		fmt.Printf("File %s read and sent back successfully\n", filename)
 
 	case "CREATE":
