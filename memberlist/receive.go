@@ -8,6 +8,7 @@ import (
 	"time"
 	"mp3/utils"
 	"mp3/cassandra"
+	"strconv"
 )
 
 func ListenAndReply(port string) {
@@ -35,7 +36,7 @@ func ListenAndReply(port string) {
 		}
 
 		receivedMessage := string(buf[:n])
-		//fmt.Printf("Received message from %s: %s\n", remoteAddr.String(), receivedMessage)
+		fmt.Printf("Received message from %s: %s\n", remoteAddr.String(), receivedMessage)
 		// Parse the received message into an array (split by "+")
 		messageParts := strings.Split(receivedMessage, "+")
 
@@ -120,7 +121,57 @@ func ListenAndReply(port string) {
 				 node := cassandra.Ring.Nodes[hash]
 				 fmt.Printf("Node ID=%d, IP=%s, Port=%s\n", node.ID, node.IP, node.Port)
 			 }
-		} else {
+		} else if len(messageParts) == 3 && messageParts[1] == "suspect" {
+			// Handle node suspect
+			fmt.Printf("Suspect Node JSON: %s\n", messageParts[2])
+			
+			// 将 messageParts[2] 的 JSON 字符串解析为 []Node 类型
+			var suspect []cassandra.Node
+			err := json.Unmarshal([]byte(messageParts[2]), &suspect)
+			if err != nil {
+				fmt.Println("Error decoding suspect list JSON:", err)
+				return
+			}
+
+			// 遍历解析出来的 suspect 节点列表
+			for _, node := range suspect {
+				fmt.Println("suspect node:", node)
+				if node.IP == cassandra.Domain {
+					// 如果节点是自身，则标记 SelfSuspected 为 true
+					cassandra.SelfSuspected = true
+				} else {
+					// 否则，将节点状态更改为 suspect
+					nodeIDStr := strconv.FormatUint(node.ID, 10)  // 假设 node.ID 是 uint64
+					changeStatus("suspect", nodeIDStr)
+				}
+			}
+			// 发送确认响应
+			_, err = conn.WriteToUDP([]byte("received"), remoteAddr)
+			if err != nil {
+				fmt.Println("Error sending ack:", err)
+			}
+		} else if len(messageParts) == 3 && messageParts[1] == "alive" {
+			// Handle node alive message
+			fmt.Printf("Node is alive: %s\n", messageParts[1])
+			var alive []string
+			err := json.Unmarshal([]byte(messageParts[2]), &alive)
+			if err != nil {
+				fmt.Println("Error decoding memberlist JSON:", err)
+				return
+			}
+			for _, node := range cassandra.Memberlist["suspect"] {
+				// Use && for logical AND check
+				if node.IP == cassandra.Domain {
+					nodeIDStr := strconv.FormatUint(node.ID, 10)
+					changeStatus("alive", nodeIDStr)
+				}
+			}
+			_, err = conn.WriteToUDP([]byte("received"), remoteAddr)
+			if err != nil {
+				fmt.Println("Error sending ack:", err)
+				continue
+			}
+		}else {
 			fmt.Println(len(messageParts))
 		}
 	}

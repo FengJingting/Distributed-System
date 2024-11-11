@@ -64,6 +64,21 @@ func send_update_whole(status string, selfIP string) {
 func send_ping(ip, port string, t float64) bool {
 	// Send a ping message to a specified node
 	message := "ping"
+
+	if len(cassandra.Memberlist["suspect"]) > 0 {
+		// 将 suspect 列表转换为 JSON
+		suspectListJSON, err := json.Marshal(cassandra.Memberlist["suspect"])
+		if err != nil {
+			fmt.Println("Error encoding suspect list JSON:", err)
+			return false
+		}
+		// 将 JSON 字符串添加到消息内容中
+		message = message + "+suspect+" + string(suspectListJSON)
+	}
+	if cassandra.SelfSuspected {
+		message = message + "+alive+" + cassandra.Domain + "+" + cassandra.MemberPort
+	}
+
 	serverAddr, err := net.ResolveUDPAddr("udp", ip+":"+port)
 	if err != nil {
 		fmt.Println("Error resolving address:", err)

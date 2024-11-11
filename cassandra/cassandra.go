@@ -2,14 +2,9 @@ package cassandra
 
 import (
 	"fmt"
-	// "mp3/memberlist"
-	// "hash/fnv"
 	"io/ioutil"
-	// "net"
 	"log"
 	"time"
-
-	// "mp3/utils"
 	"encoding/json"
 	"math/rand"
 	"sort"

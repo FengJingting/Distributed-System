@@ -42,6 +42,7 @@ var (
     MemberPort  string
     FilePort    string
     CountMutex  sync.Mutex
+    SelfSuspected bool = false
     Memberlist  = map[string][]Node{
         "alive":   {},
         "failed":  {},
